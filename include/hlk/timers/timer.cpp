@@ -48,29 +48,48 @@ Timer::~Timer() {
         m_timerThread->join();
         delete m_timerThread;
         m_timerThread = nullptr;
+
+        close(m_pipes[0]);
+        m_pipes[0] = 0;
+        close(m_pipes[1]);
+        m_pipes[0] = 1;
     } else {
         m_counter--;
     }
 }
 
-void Timer::start(unsigned int msec) {
+bool Timer::start(unsigned int msec) {
     stop();
+
+    if (msec != 0) {
+        setInterval(msec);
+    }
+
+    if (m_interval == 0) {
+        return false;
+    }
 
     m_fd = timerfd_create(CLOCK_REALTIME, 0);
     if (m_fd == -1) {
-        return;
+        return false;
     }
 
     struct itimerspec timerSpec;
-    timerSpec.it_value.tv_sec = msec / 1000;
-    timerSpec.it_value.tv_nsec = (msec % 1000) * 1000000;
-    timerSpec.it_interval.tv_sec = msec / 1000;
-    timerSpec.it_interval.tv_nsec = (msec % 1000) * 1000000;
+    memset(&timerSpec, 0, sizeof(itimerspec));
+    timerSpec.it_value.tv_sec = m_interval / 1000;
+    timerSpec.it_value.tv_nsec = (m_interval % 1000) * 1000000;
+    if (m_oneShot) {
+        timerSpec.it_interval.tv_sec = 0;
+        timerSpec.it_interval.tv_nsec = 0;
+    } else {
+        timerSpec.it_interval.tv_sec = m_interval / 1000;
+        timerSpec.it_interval.tv_nsec = (m_interval % 1000) * 1000000;
+    }
 
     if (timerfd_settime(m_fd, 0, &timerSpec, nullptr) == -1) {
         close(m_fd);
         m_fd = 0;
-        return;
+        return false;
     }
 
     pollfd pfd;
@@ -83,6 +102,8 @@ void Timer::start(unsigned int msec) {
 
     char c = TIMER_ADDED;
     write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
+
+    return true;
 }
 
 void Timer::stop() {
@@ -143,6 +164,12 @@ void Timer::timerLoop() {
                     continue;
                 }
                 m_timerInstances[i - 1]->onTimeout();
+                if (m_timerInstances[i - 1]->oneShot()) {
+                    close(m_timerInstances[i - 1]->m_fd);
+                    m_timerInstances[i - 1]->m_fd = 0;
+                    m_timerPollFds.erase(m_timerPollFds.begin() + i);
+                    m_timerInstances.erase(m_timerInstances.begin() + i - 1);
+                }
             }
         }
 

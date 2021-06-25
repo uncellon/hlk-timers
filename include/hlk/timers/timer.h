@@ -16,26 +16,35 @@ namespace Hlk {
 
 class Timer {
 public:
-    /***************************************************************************
+    /**************************************************************************
      * Constructors / Destructors
-     **************************************************************************/
+     *************************************************************************/
 
     Timer();
     ~Timer();
 
-    /***************************************************************************
+    /**************************************************************************
      * Public methods
-     **************************************************************************/
+     *************************************************************************/
 
-    void bind(Delegate<void> && delegate);
-    void start(unsigned int msec);
+    bool start(unsigned int msec = 0);
     void stop();
 
-    /***************************************************************************
+    /**************************************************************************
      * Events
-     **************************************************************************/
+     *************************************************************************/
 
     Hlk::Event<> onTimeout;
+
+    /**************************************************************************
+     * Accessors / Mutators
+     *************************************************************************/
+
+    unsigned int interval() const;
+    void setInterval(unsigned int msec);
+
+    bool oneShot() const;
+    void setOneShot(bool value);
 
 protected:
     static void timerLoop();
@@ -50,7 +59,19 @@ protected:
 
     Delegate<void> m_handler;
     int m_fd = 0;
+    unsigned int m_interval = 0;
+    bool m_oneShot = false;
 };
+
+/******************************************************************************
+ * Inline
+ *****************************************************************************/
+
+inline unsigned int Timer::interval() const { return m_interval; }
+inline void Timer::setInterval(unsigned int msec) { m_interval = msec; }
+
+inline bool Timer::oneShot() const { return m_oneShot; }
+inline void Timer::setOneShot(bool value) { m_oneShot = value; }
 
 } // namespace Hlk
 
