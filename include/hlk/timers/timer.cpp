@@ -77,9 +77,10 @@ void Timer::start(unsigned int msec) {
     memset(&pfd, 0, sizeof(pollfd));
     pfd.fd = m_fd;
     pfd.events = POLLIN;
+    
+    m_timerInstances.push_back(this);
     m_timerPollFds.push_back(pfd);
 
-    m_timerInstances.push_back(this);
     char c = TIMER_ADDED;
     write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
 }
