@@ -69,3 +69,9 @@ install(
 if(BUILD_EXAMPLES)
     add_subdirectory(example)
 endif()
+
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+    enable_testing()
+    add_test(NAME CascadeTimerCall COMMAND CascadeTimerCallTest)
+endif()

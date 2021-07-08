@@ -1,0 +1,2 @@
+add_executable(CascadeTimerCallTest cascadetimercall.cpp)
+target_link_libraries(CascadeTimerCallTest ${PROJECT_NAME})
