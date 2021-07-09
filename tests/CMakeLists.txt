@@ -1,2 +1,5 @@
 add_executable(CascadeTimerCallTest cascadetimercall.cpp)
 target_link_libraries(CascadeTimerCallTest ${PROJECT_NAME})
+
+add_executable(CallingFromAnotherThreadTest callingfromanotherthread.cpp)
+target_link_libraries(CallingFromAnotherThreadTest ${PROJECT_NAME})

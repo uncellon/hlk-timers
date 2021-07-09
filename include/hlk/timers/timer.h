@@ -46,6 +46,8 @@ public:
     bool oneShot() const;
     void setOneShot(bool value);
 
+    bool started() const;
+
 protected:
     static void timerLoop();
 
@@ -61,6 +63,7 @@ protected:
     int m_fd = 0;
     unsigned int m_interval = 0;
     bool m_oneShot = false;
+    bool m_started = false;
 };
 
 /******************************************************************************
@@ -72,6 +75,8 @@ inline void Timer::setInterval(unsigned int msec) { m_interval = msec; }
 
 inline bool Timer::oneShot() const { return m_oneShot; }
 inline void Timer::setOneShot(bool value) { m_oneShot = value; }
+
+inline bool Timer::started() const { return m_started; }
 
 } // namespace Hlk
 

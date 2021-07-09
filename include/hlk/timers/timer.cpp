@@ -100,8 +100,21 @@ bool Timer::start(unsigned int msec) {
     m_timerInstances.push_back(this);
     m_timerPollFds.push_back(pfd);
 
+    m_started = true;
+    ssize_t bytesWritten;
     char c = TIMER_ADDED;
-    write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
+
+    /* What the hell? Why do programs causes SEGFAULT when the "write" system 
+    call is called from the same thread as the method of this class. A very 
+    dirty hack that I don't understand how it works ._. Help me please */
+    std::thread{[&bytesWritten, &c] () {
+        bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
+    }}.join();
+    // bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
+    
+    if (bytesWritten != sizeof(char)) {
+        return false;
+    }
 
     return true;
 }
@@ -122,6 +135,7 @@ void Timer::stop() {
 
     close(m_fd);
     m_fd = 0;
+    m_started = false;
 }
 
 void Timer::timerLoop() {
@@ -131,8 +145,8 @@ void Timer::timerLoop() {
     char interrupt = 0;
     
     while (m_timerLoopRunning) {
-        ret = poll(m_timerPollFds.data(), m_timerPollFds.size(), -1);
-
+        ret = poll(m_timerPollFds.data(), m_timerPollFds.size(), 1);
+        
         // Skip errors and zero readed fds
         if (ret <= 0) {
             continue;
@@ -164,6 +178,9 @@ void Timer::timerLoop() {
                     continue;
                 }
                 m_timerInstances[i - 1]->onTimeout();
+                if (m_timerInstances[i - 1]->oneShot()) {
+                    m_timerInstances[i - 1]->m_started = false;
+                }
                 if (m_timerInstances[i - 1]->oneShot()) {
                     close(m_timerInstances[i - 1]->m_fd);
                     m_timerInstances[i - 1]->m_fd = 0;
