@@ -24,19 +24,13 @@ void timerHandler1() {
 int main(int argc, char* argv[]) {
     timer.setOneShot(true);
     timer.onTimeout.addEventHandler(timerHandler1);
-
-    {
-        auto thr = std::thread([] () {
-            if (!timer.start(1)) {
-                std::cout << "Failed to start timer\n";
-                exit(EXIT_FAILURE);
-            }
-        });
-        thr.detach();
+    if (!timer.start(1)) {
+        std::cout << "Failed to start timer\n";
+        exit(EXIT_FAILURE);
     }
-    std::mutex m;
-    std::unique_lock lock(m);
-    cv.wait_for(lock, std::chrono::seconds(3));
+    std::mutex testMutex;
+    std::unique_lock testLock(testMutex);
+    cv.wait_for(testLock, std::chrono::seconds(3));
     if (!called) {
         return EXIT_FAILURE;
     }
