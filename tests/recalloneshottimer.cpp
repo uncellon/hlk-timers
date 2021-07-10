@@ -8,9 +8,15 @@
 std::condition_variable cv;
 Hlk::Timer timer;
 bool called = false;
+unsigned int counter = 0;
 
 void timerHandler1() {
     std::cout << "Timer handler 1 called\n";
+    counter++;
+    if (counter != 2) {
+        timer.start(1);
+        return;
+    }
     called = true;
     cv.notify_one();
 }

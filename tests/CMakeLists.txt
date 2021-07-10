@@ -3,3 +3,6 @@ target_link_libraries(CascadeTimerCallTest ${PROJECT_NAME})
 
 add_executable(CallingFromAnotherThreadTest callingfromanotherthread.cpp)
 target_link_libraries(CallingFromAnotherThreadTest ${PROJECT_NAME})
+
+add_executable(RecallOneShotTimerTest recalloneshottimer.cpp)
+target_link_libraries(RecallOneShotTimerTest ${PROJECT_NAME})

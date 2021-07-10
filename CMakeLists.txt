@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(HlkTimers VERSION 1.0.1)
+project(HlkTimers VERSION 1.0.2)
 
 option(BUILD_EXAMPLES "Build examples" ON)
 
@@ -75,4 +75,5 @@ if(BUILD_TESTS)
     enable_testing()
     add_test(NAME CascadeTimerCall COMMAND CascadeTimerCallTest)
     add_test(NAME CallingFromAnotherThread COMMAND CallingFromAnotherThreadTest)
+    add_test(NAME RecallOneShotTimer COMMAND RecallOneShotTimerTest)
 endif()

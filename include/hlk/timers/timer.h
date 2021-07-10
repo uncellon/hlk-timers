@@ -7,6 +7,7 @@
 #include <vector>
 #include <sys/poll.h>
 #include <mutex>
+#include <condition_variable>
 
 #define TIMER_ADDED 1
 #define TIMER_DELETED 2
@@ -58,6 +59,8 @@ protected:
     static std::vector<Timer *> m_timerInstances;
     static int m_pipes[2];
     static std::mutex m_mutex;
+    static std::condition_variable m_cv;
+    static char m_interrupt;
 
     Delegate<void> m_handler;
     int m_fd = 0;

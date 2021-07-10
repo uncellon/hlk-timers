@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <cstring>
-#include <iostream>
 #include <stdexcept>
 
 namespace Hlk {
@@ -16,6 +15,8 @@ std::vector<pollfd> Timer::m_timerPollFds;
 std::vector<Timer *> Timer::m_timerInstances;
 int Timer::m_pipes[2];
 std::mutex Timer::m_mutex;
+std::condition_variable Timer::m_cv;
+char Timer::m_interrupt;
 
 Timer::Timer() {
     m_counter++;
@@ -42,8 +43,7 @@ Timer::~Timer() {
     if (m_counter == 1) {
         m_counter = 0;
         m_timerLoopRunning = false;
-        char c;
-        c = TIMER_THREAD_END;
+        char c = TIMER_THREAD_END;
         write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
         m_timerThread->join();
         delete m_timerThread;
@@ -63,9 +63,7 @@ bool Timer::start(unsigned int msec) {
 
     if (msec != 0) {
         setInterval(msec);
-    }
-
-    if (m_interval == 0) {
+    } else {
         return false;
     }
 
@@ -96,25 +94,21 @@ bool Timer::start(unsigned int msec) {
     memset(&pfd, 0, sizeof(pollfd));
     pfd.fd = m_fd;
     pfd.events = POLLIN;
-    
-    m_timerInstances.push_back(this);
-    m_timerPollFds.push_back(pfd);
 
-    m_started = true;
-    ssize_t bytesWritten;
-    char c = TIMER_ADDED;
-
-    /* What the hell? Why do programs causes SEGFAULT when the "write" system 
-    call is called from the same thread as the method of this class. A very 
-    dirty hack that I don't understand how it works ._. Help me please */
-    std::thread{[&bytesWritten, &c] () {
-        bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
-    }}.join();
-    // bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>(&c), sizeof(char));
-    
-    if (bytesWritten != sizeof(char)) {
+    m_interrupt = TIMER_ADDED;
+    auto bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+    if (bytesWritten != 1) {
         return false;
     }
+    
+    m_mutex.lock();
+    m_timerInstances.push_back(this);
+    m_timerPollFds.push_back(pfd);
+    m_mutex.unlock();
+
+    m_started = true;
+    m_interrupt = 0;
+    m_cv.notify_one();
 
     return true;
 }
@@ -122,6 +116,12 @@ bool Timer::start(unsigned int msec) {
 void Timer::stop() {
     if (!m_fd) {
         return;
+    }
+
+    m_interrupt = TIMER_DELETED;
+    auto bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+    if (bytesWritten != 1) {
+        throw std::runtime_error("Failed to interrupt timer thread");
     }
 
     m_mutex.lock();
@@ -133,40 +133,52 @@ void Timer::stop() {
     }
     m_mutex.unlock();
 
+    m_started = false;
+    m_interrupt = 0;
+    m_cv.notify_one();
+
     close(m_fd);
     m_fd = 0;
-    m_started = false;
 }
 
 void Timer::timerLoop() {
     int ret = 0;
     ssize_t bytesRead = 0;
     uint64_t exp;
-    char interrupt = 0;
+
+    std::mutex signalMutex;
+    std::unique_lock signalLock(signalMutex, std::defer_lock);
+
+    std::unique_lock lock(m_mutex);
     
     while (m_timerLoopRunning) {
-        ret = poll(m_timerPollFds.data(), m_timerPollFds.size(), 1);
+        // Infinity waiting
+        ret = poll(m_timerPollFds.data(), m_timerPollFds.size(), -1);
         
         // Skip errors and zero readed fds
         if (ret <= 0) {
             continue;
         }
 
-        m_mutex.lock();
+        lock.unlock();
 
-        // Process software interrupt
+        if (m_interrupt == TIMER_ADDED || m_interrupt == TIMER_DELETED) {
+            while (m_interrupt != 0) {
+                m_cv.wait(signalLock);
+            }
+        } else if (m_interrupt == TIMER_THREAD_END) {
+            return;
+        }
+
+        lock.lock();
+
+        // Process software interrupt, clear pipe buffer
         if (m_timerPollFds[0].revents == POLLIN) {
             m_timerPollFds[0].revents = 0;
-            bytesRead = read(m_timerPollFds[0].fd, &interrupt, sizeof(char));
-            if (interrupt == TIMER_ADDED || interrupt == TIMER_DELETED) {
-                interrupt = 0;
-                if (ret == 1) {
-                    m_mutex.unlock();
-                    continue;
-                }
-            } else if (interrupt == TIMER_THREAD_END) {
-                return;
-            }
+            ssize_t bytesRead = 0;
+            do {
+                bytesRead = read(m_timerPollFds[0].fd, nullptr, 8);
+            } while (bytesRead == 8);
         }
 
         // Process timers
@@ -180,8 +192,6 @@ void Timer::timerLoop() {
                 m_timerInstances[i - 1]->onTimeout();
                 if (m_timerInstances[i - 1]->oneShot()) {
                     m_timerInstances[i - 1]->m_started = false;
-                }
-                if (m_timerInstances[i - 1]->oneShot()) {
                     close(m_timerInstances[i - 1]->m_fd);
                     m_timerInstances[i - 1]->m_fd = 0;
                     m_timerPollFds.erase(m_timerPollFds.begin() + i);
@@ -189,8 +199,6 @@ void Timer::timerLoop() {
                 }
             }
         }
-
-        m_mutex.unlock();
     }
 }
 
