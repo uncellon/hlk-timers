@@ -59,17 +59,17 @@ Timer::~Timer() {
 }
 
 bool Timer::start(unsigned int msec) {
-    stop();
-
     if (msec != 0) {
         setInterval(msec);
     } else {
         return false;
     }
 
-    m_fd = timerfd_create(CLOCK_REALTIME, 0);
-    if (m_fd == -1) {
-        return false;
+    if (!m_fd) {
+        m_fd = timerfd_create(CLOCK_REALTIME, 0);
+        if (m_fd == -1) {
+            return false;
+        }
     }
 
     struct itimerspec timerSpec;
@@ -90,26 +90,29 @@ bool Timer::start(unsigned int msec) {
         return false;
     }
 
-    pollfd pfd;
-    memset(&pfd, 0, sizeof(pollfd));
-    pfd.fd = m_fd;
-    pfd.events = POLLIN;
+    if (!m_called) {
+        pollfd pfd;
+        memset(&pfd, 0, sizeof(pollfd));
+        pfd.fd = m_fd;
+        pfd.events = POLLIN;
 
-    m_interrupt = TIMER_ADDED;
-    auto bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
-    if (bytesWritten != 1) {
-        return false;
+        m_interrupt = TIMER_ADDED;
+        auto bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+        if (bytesWritten != 1) {
+            return false;
+        }
+        
+        m_mutex.lock();
+        m_timerInstances.push_back(this);
+        m_timerPollFds.push_back(pfd);
+        m_mutex.unlock();
+
+        m_started = true;
+        m_interrupt = 0;
+        m_cv.notify_one();
     }
-    
-    m_mutex.lock();
-    m_timerInstances.push_back(this);
-    m_timerPollFds.push_back(pfd);
-    m_mutex.unlock();
 
-    m_started = true;
-    m_interrupt = 0;
-    m_cv.notify_one();
-
+    m_ignoreOneShot = true;
     return true;
 }
 
@@ -189,8 +192,14 @@ void Timer::timerLoop() {
                 if (bytesRead != sizeof(uint64_t)) {
                     continue;
                 }
+
+                m_timerInstances[i - 1]->m_called = true;
+                lock.unlock();
                 m_timerInstances[i - 1]->onTimeout();
-                if (m_timerInstances[i - 1]->oneShot()) {
+                lock.lock();
+                m_timerInstances[i - 1]->m_called = false;
+
+                if (m_timerInstances[i - 1]->oneShot() && !m_timerInstances[i - 1]->m_ignoreOneShot) {
                     m_timerInstances[i - 1]->m_started = false;
                     close(m_timerInstances[i - 1]->m_fd);
                     m_timerInstances[i - 1]->m_fd = 0;

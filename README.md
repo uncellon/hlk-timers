@@ -3,6 +3,13 @@
 ## Changelog:
 
 <details>
+<summary>v1.0.3</summary>
+
+- Fixed deadlock when timer restart/stop itself
+
+</details>
+
+<details>
 <summary>v1.0.2</summary>
 
 - Removed ugly hack, timer improvements

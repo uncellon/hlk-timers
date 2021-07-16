@@ -62,11 +62,13 @@ protected:
     static std::condition_variable m_cv;
     static char m_interrupt;
 
-    Delegate<void> m_handler;
+    enum class State;
     int m_fd = 0;
     unsigned int m_interval = 0;
     bool m_oneShot = false;
     bool m_started = false;
+    bool m_called = false;
+    bool m_ignoreOneShot = false;
 };
 
 /******************************************************************************
