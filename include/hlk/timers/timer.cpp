@@ -62,7 +62,8 @@ bool Timer::start(unsigned int msec) {
     if (msec != 0) {
         setInterval(msec);
     } else {
-        return false;
+        onTimeout();
+        return true;
     }
 
     if (!m_fd) {

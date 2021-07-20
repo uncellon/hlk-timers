@@ -3,6 +3,13 @@
 ## Changelog:
 
 <details>
+<summary>v1.0.4</summary>
+
+- Added immediately starting support
+
+</details>
+
+<details>
 <summary>v1.0.3</summary>
 
 - Fixed deadlock when timer restart/stop itself
