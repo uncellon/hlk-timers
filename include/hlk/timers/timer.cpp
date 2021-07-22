@@ -128,6 +128,10 @@ void Timer::stop() {
         throw std::runtime_error("Failed to interrupt timer thread");
     }
 
+    if (m_called) {
+        m_deleted = true;
+        return;
+    }
     m_mutex.lock();
     for (size_t i = 1; i < m_timerPollFds.size(); ++i) {
         if (m_timerPollFds[i].fd == m_fd) {
@@ -200,7 +204,8 @@ void Timer::timerLoop() {
                 lock.lock();
                 m_timerInstances[i - 1]->m_called = false;
 
-                if (m_timerInstances[i - 1]->oneShot() && !m_timerInstances[i - 1]->m_ignoreOneShot) {
+                if ((m_timerInstances[i - 1]->oneShot() && !m_timerInstances[i - 1]->m_ignoreOneShot) ||
+                    m_timerInstances[i - 1]->m_deleted) {
                     m_timerInstances[i - 1]->m_started = false;
                     close(m_timerInstances[i - 1]->m_fd);
                     m_timerInstances[i - 1]->m_fd = 0;

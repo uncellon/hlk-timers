@@ -69,6 +69,7 @@ protected:
     bool m_started = false;
     bool m_called = false;
     bool m_ignoreOneShot = false;
+    bool m_deleted = false;
 };
 
 /******************************************************************************
