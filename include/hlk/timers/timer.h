@@ -8,6 +8,7 @@
 #include <sys/poll.h>
 #include <mutex>
 #include <condition_variable>
+#include <sys/timerfd.h>
 
 #define TIMER_ADDED 1
 #define TIMER_DELETED 2
@@ -54,9 +55,9 @@ protected:
 
     static unsigned int m_counter;
     static std::thread *m_timerThread;
-    static bool m_timerLoopRunning;
-    static std::vector<pollfd> m_timerPollFds;
-    static std::vector<Timer *> m_timerInstances;
+    static bool m_timer_loop_running;
+    static std::vector<pollfd> m_timer_poll_fds;
+    static std::vector<Timer *> m_timer_instances;
     static int m_pipes[2];
     static std::mutex m_mutex;
     static std::condition_variable m_cv;
@@ -65,11 +66,14 @@ protected:
     enum class State;
     int m_fd = 0;
     unsigned int m_interval = 0;
-    bool m_oneShot = false;
+    bool m_one_shot = false;
     bool m_started = false;
     bool m_called = false;
-    bool m_ignoreOneShot = false;
+    bool m_need_restart = false;
     bool m_deleted = false;
+    std::mutex m_start_stop_mutex;
+
+    struct itimerspec timer_spec;
 };
 
 /******************************************************************************
@@ -79,8 +83,8 @@ protected:
 inline unsigned int Timer::interval() const { return m_interval; }
 inline void Timer::setInterval(unsigned int msec) { m_interval = msec; }
 
-inline bool Timer::oneShot() const { return m_oneShot; }
-inline void Timer::setOneShot(bool value) { m_oneShot = value; }
+inline bool Timer::oneShot() const { return m_one_shot; }
+inline void Timer::setOneShot(bool value) { m_one_shot = value; }
 
 inline bool Timer::started() const { return m_started; }
 
