@@ -3,6 +3,27 @@
 ## Changelog:
 
 <details>
+<summary>v1.0.7</summary>
+
+- Stop deadlock fix
+
+</details>
+
+<details>
+<summary>v1.0.6</summary>
+
+- Multithreading improvements
+
+</details>
+
+<details>
+<summary>v1.0.5</summary>
+
+- Start/Stop improvements
+
+</details>
+
+<details>
 <summary>v1.0.4</summary>
 
 - Added immediately starting support
