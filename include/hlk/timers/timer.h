@@ -63,6 +63,12 @@ protected:
     static std::condition_variable m_cv;
     static char m_interrupt;
 
+    /**************************************************************************
+     * Private methods
+     *************************************************************************/
+
+    void add_timer();
+
     enum class State;
     int m_fd = 0;
     unsigned int m_interval = 0;
