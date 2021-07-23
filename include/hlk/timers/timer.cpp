@@ -20,7 +20,7 @@ char Timer::m_interrupt;
 Timer::Timer() {
     m_counter++;
     if (!m_timerThread && m_counter == 1) {
-        // Create pipe to interrupt poll(...)
+        // create pipe to interrupt poll(...)
         if (pipe(m_pipes) == -1) {
             throw std::runtime_error("failed to create pipe");
         }
@@ -61,36 +61,19 @@ Timer::~Timer() {
 }
 
 bool Timer::start(unsigned int msec) {
-    std::unique_lock lock(m_mutex, std::defer_lock);
-    if (!lock.try_lock()) {
-        m_interrupt = TIMER_ADDED;
-        auto bytes_written = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
-        if (bytes_written != 1) {
-            close(m_fd);
-            m_fd = 0;
-            return false;
-        }
-        lock.lock();
-    }
+    auto lock = suspend_thread(TIMER_DELETED);
 
     if (msec == 0) {
+        // immediate event call
         onTimeout();
-
-        // continue timer thread
-        m_interrupt = 0;
-        m_cv.notify_one();
-
+        resume_thread();
         return true;
     }
 
-    // check timer file descriptor
     if (!m_fd) {
         m_fd = timerfd_create(CLOCK_MONOTONIC, 0);
         if (m_fd == -1) {            
-            // continue timer thread
-            m_interrupt = 0;
-            m_cv.notify_one();
-
+            resume_thread();
             throw std::runtime_error("timerfd_create(...) failed");
         }
     }
@@ -115,26 +98,19 @@ bool Timer::start(unsigned int msec) {
         close(m_fd);
         m_fd = 0;
         m_started = false;
-
-        // continue timer thread
-        m_interrupt = 0;
-        m_cv.notify_one();
-
+        resume_thread();
         throw std::runtime_error("timerfd_settime(...) failed");
-
-        return false;
     }
 
-    // continue timer thread
-    m_interrupt = 0;
-    m_cv.notify_one();
+    resume_thread();
 
-    // method called from its own onTimeout(...) handler 
+    // the timer is started from its own handler 
     if (m_called) {
-        m_need_restart = true;
+        m_self_restart = true;
         return true;
     }
 
+    // already started, timings have been updated
     if (m_started) {
         return true;
     }
@@ -147,42 +123,25 @@ bool Timer::start(unsigned int msec) {
     m_timer_instances.push_back(this);
     m_timer_poll_fds.push_back(pfd);
 
-    m_started = true;
-    
+    m_started = true;    
     return true;
 }
 
 void Timer::stop() {
-    std::unique_lock lock(m_mutex, std::defer_lock);
-    if (!lock.try_lock()) {
-        m_interrupt = TIMER_DELETED;
-        auto bytes_written = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
-        if (bytes_written != 1) {
-            close(m_fd);
-            m_fd = 0;
-            return;
-        }
-        lock.lock();
-    }
-
+    auto lock = suspend_thread(TIMER_DELETED);
     if (!m_fd) {
-        // continue timer thread
-        m_interrupt = 0;
-        m_cv.notify_one();
-
+        resume_thread();
         return;
     }
 
-    // method called from its own onTimeout(...) handler
+    // the timer is started from its own handler 
     if (m_called) {
-        // continue timer thread
-        m_interrupt = 0;
-        m_cv.notify_one();
-
         m_deleted = true;
+        resume_thread();
         return;
     }
 
+    // find current timer instance and erase it
     for (size_t i = 1; i < m_timer_poll_fds.size(); ++i) {
         if (m_timer_poll_fds[i].fd == m_fd) {
             m_timer_poll_fds.erase(m_timer_poll_fds.begin() + i);
@@ -191,10 +150,7 @@ void Timer::stop() {
     }
 
     m_started = false;
-    
-    // continue timer thread
-    m_interrupt = 0;
-    m_cv.notify_one();
+    resume_thread();
 
     close(m_fd);
     m_fd = 0;
@@ -211,10 +167,10 @@ void Timer::timerLoop() {
     std::unique_lock lock(m_mutex);
     
     while (m_timer_loop_running) {
-        // Infinity waiting
+        // infinity waiting
         ret = poll(m_timer_poll_fds.data(), m_timer_poll_fds.size(), -1);
         
-        // Skip errors and zero readed fds
+        // skip errors and zero readed fds
         if (ret <= 0) {
             continue;
         }
@@ -230,16 +186,16 @@ void Timer::timerLoop() {
 
         lock.lock();
 
-        // Process software interrupt, clear pipe buffer
+        // process software interrupt, clear pipe buffer
         if (m_timer_poll_fds[0].revents == POLLIN) {
             m_timer_poll_fds[0].revents = 0;
             ssize_t bytes_read = 0;
             do {
-                bytes_read = read(m_timer_poll_fds[0].fd, nullptr, 8);
-            } while (bytes_read == 8);
+                bytes_read = read(m_timer_poll_fds[0].fd, &exp, sizeof(uint64_t));
+            } while (bytes_read == sizeof(uint64_t));
         }
 
-        // Process timers
+        // process timers
         for (size_t i = 1; i < m_timer_poll_fds.size(); ++i) {
             if (m_timer_poll_fds[i].revents == POLLIN) {
                 m_timer_poll_fds[i].revents = 0;
@@ -256,7 +212,7 @@ void Timer::timerLoop() {
 
                 // checking if the timer needs to be stopped
                 if ((m_timer_instances[i - 1]->m_one_shot && 
-                        !m_timer_instances[i - 1]->m_need_restart) ||
+                        !m_timer_instances[i - 1]->m_self_restart) ||
                         m_timer_instances[i - 1]->m_deleted) {
                     m_timer_instances[i - 1]->m_started = false;
                     close(m_timer_instances[i - 1]->m_fd);
@@ -265,10 +221,30 @@ void Timer::timerLoop() {
                     m_timer_instances.erase(m_timer_instances.begin() + i - 1);
                 }
 
-                m_timer_instances[i - 1]->m_need_restart = false;
+                m_timer_instances[i - 1]->m_self_restart = false;
             }
         }
     }
+}
+
+std::unique_lock<std::mutex> Timer::suspend_thread(uint8_t reason) {
+    std::unique_lock lock(m_mutex, std::defer_lock);
+    if (!lock.try_lock()) {
+        m_interrupt = TIMER_ADDED;
+        auto bytes_written = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+        if (bytes_written != 1) {
+            close(m_fd);
+            m_fd = 0;
+            throw std::runtime_error("write(...) to pipe failed");
+        }
+        lock.lock();
+    }
+    return lock;
+}
+
+void Timer::resume_thread() {
+    m_interrupt = 0;
+    m_cv.notify_one();
 }
 
 } // namespace Hlk

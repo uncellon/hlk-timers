@@ -1,14 +1,15 @@
 #ifndef HLK_TIMER_H
 #define HLK_TIMER_H
 
+#include <mutex>
 #include <thread>
-#include <hlk/events/event.h>
-#include <hlk/events/delegate.h>
 #include <vector>
 #include <sys/poll.h>
-#include <mutex>
-#include <condition_variable>
 #include <sys/timerfd.h>
+#include <condition_variable>
+
+#include <hlk/events/event.h>
+#include <hlk/events/delegate.h>
 
 #define TIMER_ADDED 1
 #define TIMER_DELETED 2
@@ -67,7 +68,8 @@ protected:
      * Private methods
      *************************************************************************/
 
-    void add_timer();
+    std::unique_lock<std::mutex> suspend_thread(uint8_t reason);
+    void resume_thread();
 
     enum class State;
     int m_fd = 0;
@@ -75,7 +77,7 @@ protected:
     bool m_one_shot = false;
     bool m_started = false;
     bool m_called = false;
-    bool m_need_restart = false;
+    bool m_self_restart = false;
     bool m_deleted = false;
     std::mutex m_start_stop_mutex;
 
