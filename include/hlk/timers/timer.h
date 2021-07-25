@@ -63,6 +63,7 @@ protected:
     static std::mutex m_mutex;
     static std::condition_variable m_cv;
     static char m_interrupt;
+    static bool m_threadCreated;
 
     /**************************************************************************
      * Private methods

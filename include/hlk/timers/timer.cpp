@@ -16,6 +16,7 @@ int Timer::m_pipes[2];
 std::mutex Timer::m_mutex;
 std::condition_variable Timer::m_cv;
 char Timer::m_interrupt;
+bool Timer::m_threadCreated = false;
 
 Timer::Timer() {
     m_counter++;
@@ -35,6 +36,10 @@ Timer::Timer() {
 
         m_timerLoopRunning = true;
         m_timerThread = new std::thread(&Timer::timerLoop);
+
+        std::mutex mutex;
+        std::unique_lock lock(mutex);
+        m_cv.wait(lock, [] () { return m_threadCreated; });
     }
 
     memset(&m_timerSpec, 0, sizeof(itimerspec));
@@ -61,7 +66,7 @@ Timer::~Timer() {
 }
 
 bool Timer::start(unsigned int msec) {
-    auto lock = suspendThread(TIMER_DELETED);
+    auto lock = suspendThread(TIMER_ADDED);
 
     if (msec == 0) {
         // immediate event call
@@ -123,7 +128,7 @@ bool Timer::start(unsigned int msec) {
     m_timerInstances.push_back(this);
     m_timerPollFds.push_back(pfd);
 
-    m_started = true;    
+    m_started = true;
     return true;
 }
 
@@ -166,6 +171,8 @@ void Timer::timerLoop() {
     std::unique_lock signalLock(signalMutex, std::defer_lock);
 
     std::unique_lock lock(m_mutex);
+    m_threadCreated = true;
+    m_cv.notify_one();
     
     while (m_timerLoopRunning) {
         // infinity waiting
@@ -181,11 +188,11 @@ void Timer::timerLoop() {
         lock.unlock();
 
         if (m_interrupt == TIMER_THREAD_END) {
+            m_threadCreated = false;
             return;
         }
-        while (m_interrupt != 0) {
-            m_cv.wait(signalLock);
-        }
+
+        m_cv.wait(signalLock, [] () { return m_interrupt == 0; });
 
         lock.lock();
 
@@ -228,12 +235,13 @@ void Timer::timerLoop() {
             }
         }
     }
+    m_threadCreated = false;
 }
 
 std::unique_lock<std::mutex> Timer::suspendThread(uint8_t reason) {
     std::unique_lock lock(m_mutex, std::defer_lock);
     if (!lock.try_lock()) {
-        m_interrupt = TIMER_ADDED;
+        m_interrupt = reason;
         auto bytesWritten = write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
         if (bytesWritten != 1) {
             close(m_fd);

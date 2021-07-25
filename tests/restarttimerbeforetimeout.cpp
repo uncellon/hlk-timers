@@ -6,7 +6,7 @@
 std::condition_variable cv;
 bool triggered = false;
 
-void timer_timeout_handler() {
+void timerTimeoutHandler() {
     std::cout << "timer triggered\n";
     triggered = true;
     cv.notify_one();
@@ -15,10 +15,10 @@ void timer_timeout_handler() {
 int main(int argc, char *argv[]) {
     Hlk::Timer timer;
     timer.setOneShot(true);
-    timer.onTimeout.addEventHandler(timer_timeout_handler);
+    timer.onTimeout.addEventHandler(timerTimeoutHandler);
     timer.start(10000);
     for (unsigned int i = 0; i < 10; ++i) {
-        timer.start(10);
+        timer.start(1);
     }
 
     std::mutex mutex;
