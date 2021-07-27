@@ -39,7 +39,10 @@ Timer::Timer() {
 
         std::mutex mutex;
         std::unique_lock lock(mutex);
-        m_cv.wait(lock, [] () { return m_threadCreated; });
+
+        while (!m_threadCreated) {
+            continue;
+        }
     }
 
     memset(&m_timerSpec, 0, sizeof(itimerspec));
