@@ -57,7 +57,7 @@ protected:
     static unsigned int m_counter;
     static std::thread *m_timerThread;
     static bool m_timerLoopRunning;
-    static std::vector<pollfd> m_timerPollFds;
+    static std::vector<pollfd> m_pollFds;
     static std::vector<Timer *> m_timerInstances;
     static int m_pipes[2];
     static std::mutex m_mutex;

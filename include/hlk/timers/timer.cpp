@@ -10,7 +10,7 @@ namespace Hlk {
 unsigned int Timer::m_counter = 0;
 std::thread *Timer::m_timerThread = nullptr;
 bool Timer::m_timerLoopRunning = false;
-std::vector<pollfd> Timer::m_timerPollFds;
+std::vector<pollfd> Timer::m_pollFds;
 std::vector<Timer *> Timer::m_timerInstances;
 int Timer::m_pipes[2];
 std::mutex Timer::m_mutex;
@@ -21,9 +21,9 @@ bool Timer::m_threadCreated = false;
 Timer::Timer() {
     m_counter++;
     if (!m_timerThread && m_counter == 1) {
-        // create pipe to interrupt poll(...)
+        // Create pipe to interrupt poll(...)
         if (pipe(m_pipes) == -1) {
-            throw std::runtime_error("failed to create pipe");
+            throw std::runtime_error("Failed to create pipe");
         }
 
         pollfd pfd;
@@ -31,15 +31,16 @@ Timer::Timer() {
         pfd.fd = m_pipes[0];
         pfd.events = POLLIN;
 
-        m_timerPollFds.clear();
-        m_timerPollFds.push_back(pfd);
+        m_pollFds.clear();
+        m_pollFds.push_back(pfd);
 
         m_timerLoopRunning = true;
         m_timerThread = new std::thread(&Timer::timerLoop);
 
-        std::mutex mutex;
-        std::unique_lock lock(mutex);
+        // std::mutex mutex;
+        // std::unique_lock lock(mutex);
 
+        // Dirty hack
         while (!m_threadCreated) {
             continue;
         }
@@ -129,7 +130,7 @@ bool Timer::start(unsigned int msec) {
     pfd.events = POLLIN;
     
     m_timerInstances.push_back(this);
-    m_timerPollFds.push_back(pfd);
+    m_pollFds.push_back(pfd);
 
     m_started = true;
     return true;
@@ -151,9 +152,9 @@ void Timer::stop() {
     }
 
     // find current timer instance and erase it
-    for (size_t i = 1; i < m_timerPollFds.size(); ++i) {
-        if (m_timerPollFds[i].fd == m_fd) {
-            m_timerPollFds.erase(m_timerPollFds.begin() + i);
+    for (size_t i = 1; i < m_pollFds.size(); ++i) {
+        if (m_pollFds[i].fd == m_fd) {
+            m_pollFds.erase(m_pollFds.begin() + i);
             m_timerInstances.erase(m_timerInstances.begin() + i - 1);
         }
     }
@@ -180,7 +181,7 @@ void Timer::timerLoop() {
     while (m_timerLoopRunning) {
         // infinity waiting
         if (m_interrupt == 0) {
-            ret = poll(m_timerPollFds.data(), m_timerPollFds.size(), -1);
+            ret = poll(m_pollFds.data(), m_pollFds.size(), -1);
         }
         
         // skip errors and zero readed fds
@@ -200,19 +201,19 @@ void Timer::timerLoop() {
         lock.lock();
 
         // process software interrupt, clear pipe buffer
-        if (m_timerPollFds[0].revents == POLLIN) {
-            m_timerPollFds[0].revents = 0;
+        if (m_pollFds[0].revents == POLLIN) {
+            m_pollFds[0].revents = 0;
             ssize_t bytes_read = 0;
             do {
-                bytes_read = read(m_timerPollFds[0].fd, &exp, sizeof(uint64_t));
+                bytes_read = read(m_pollFds[0].fd, &exp, sizeof(uint64_t));
             } while (bytes_read == sizeof(uint64_t));
         }
 
         // process timers
-        for (size_t i = 1; i < m_timerPollFds.size(); ++i) {
-            if (m_timerPollFds[i].revents == POLLIN) {
-                m_timerPollFds[i].revents = 0;
-                bytesRead = read(m_timerPollFds[i].fd, &exp, sizeof(uint64_t));
+        for (size_t i = 1; i < m_pollFds.size(); ++i) {
+            if (m_pollFds[i].revents == POLLIN) {
+                m_pollFds[i].revents = 0;
+                bytesRead = read(m_pollFds[i].fd, &exp, sizeof(uint64_t));
                 if (bytesRead != sizeof(uint64_t)) {
                     continue;
                 }
@@ -230,7 +231,7 @@ void Timer::timerLoop() {
                     m_timerInstances[i - 1]->m_started = false;
                     close(m_timerInstances[i - 1]->m_fd);
                     m_timerInstances[i - 1]->m_fd = 0;
-                    m_timerPollFds.erase(m_timerPollFds.begin() + i);
+                    m_pollFds.erase(m_pollFds.begin() + i);
                     m_timerInstances.erase(m_timerInstances.begin() + i - 1);
                 }
 
