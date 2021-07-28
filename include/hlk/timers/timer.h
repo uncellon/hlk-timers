@@ -5,15 +5,16 @@
 #include <thread>
 #include <vector>
 #include <sys/poll.h>
+#include <shared_mutex>
 #include <sys/timerfd.h>
 #include <condition_variable>
-
 #include <hlk/events/event.h>
 #include <hlk/events/delegate.h>
 
 #define TIMER_ADDED 1
 #define TIMER_DELETED 2
 #define TIMER_THREAD_END 3
+#define TIMER_UPDATED 4
 
 namespace Hlk {
 
@@ -60,7 +61,7 @@ protected:
     static std::vector<pollfd> m_pollFds;
     static std::vector<Timer *> m_timerInstances;
     static int m_pipes[2];
-    static std::mutex m_mutex;
+    static std::shared_mutex m_sharedMutex;
     static std::condition_variable m_cv;
     static char m_interrupt;
     static bool m_threadCreated;
@@ -69,20 +70,17 @@ protected:
      * Private methods
      *************************************************************************/
 
-    std::unique_lock<std::mutex> suspendThread(uint8_t reason);
     void resumeThread();
+    void interruptThread(uint8_t signal);
 
     enum class State;
-    int m_fd = 0;
+    int m_timerfd = 0;
     unsigned int m_interval = 0;
     bool m_oneShot = false;
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
     bool m_deleted = false;
-    std::mutex m_start_stop_mutex;
-
-    struct itimerspec m_timerSpec;
 };
 
 /******************************************************************************
