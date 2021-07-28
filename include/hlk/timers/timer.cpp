@@ -218,21 +218,36 @@ void Timer::timerLoop() {
                     continue;
                 }
 
-                m_timerInstances[i - 1]->m_called = true;
+                auto instance = m_timerInstances[i - 1];
+                // m_timerInstances[i - 1]->m_called = true;
+                instance->m_called = true;
                 lock.unlock();
-                m_timerInstances[i - 1]->onTimeout();
+                // m_timerInstances[i - 1]->onTimeout();
+                instance->onTimeout();
                 lock.lock();
-                m_timerInstances[i - 1]->m_called = false;
+                // m_timerInstances[i - 1]->m_called = false;
+                instance->m_called = false;
 
                 // checking if the timer needs to be stopped
-                if ((m_timerInstances[i - 1]->m_oneShot && 
-                        !m_timerInstances[i - 1]->m_selfRestart) ||
-                        m_timerInstances[i - 1]->m_deleted) {
-                    m_timerInstances[i - 1]->m_started = false;
-                    close(m_timerInstances[i - 1]->m_fd);
-                    m_timerInstances[i - 1]->m_fd = 0;
-                    m_pollFds.erase(m_pollFds.begin() + i);
-                    m_timerInstances.erase(m_timerInstances.begin() + i - 1);
+                if ((instance->m_oneShot && 
+                        !instance->m_selfRestart) ||
+                        instance->m_deleted) {
+                    // Find instance (because onTimeout may stopped and deleted another timer)
+
+                    // m_timerInstances[i - 1]->m_started = false;
+                    // close(m_timerInstances[i - 1]->m_fd);
+                    // m_timerInstances[i - 1]->m_fd = 0;
+                    // m_pollFds.erase(m_pollFds.begin() + i);
+                    // m_timerInstances.erase(m_timerInstances.begin() + i - 1);
+                    for (size_t j = 1; j < m_pollFds.size(); ++j) {
+                        if (m_pollFds[j].fd == instance->m_fd) {
+                            m_timerInstances[j - 1]->m_started = false;
+                            close(m_timerInstances[j - 1]->m_fd);
+                            m_timerInstances[j - 1]->m_fd = 0;
+                            m_pollFds.erase(m_pollFds.begin() + j);
+                            m_timerInstances.erase(m_timerInstances.begin() + j - 1);
+                        }
+                    }
                 }
 
                 m_timerInstances[i - 1]->m_selfRestart = false;
