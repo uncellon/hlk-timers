@@ -143,6 +143,8 @@ void Timer::stop() {
         throw std::runtime_error("timerfd_settime(...) failed");
     }
 
+    m_started = false;
+
     // Interrupt thread
     interruptThread(TIMER_UPDATED);
 }
