@@ -31,7 +31,7 @@ TimerManager::~TimerManager() {
     delete m_thread;
 }
 
-pollfd &TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
+pollfd *TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
     // Create timerfd
     int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (timerfd == -1) {
@@ -72,21 +72,22 @@ pollfd &TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate
 
     m_callbacks.push_back(callback);
     m_pfds.push_back(pfd);
+    pollfd *last = &m_pfds.back();
 
     m_mutex.unlock();
 
-    return m_pfds.back();
+    return last;
 }
 
-void TimerManager::deleteTimer(pollfd &pfd) {
-    pfd.events = 0;
+void TimerManager::deleteTimer(pollfd *pfd) {
+    pfd->events = 0;
 
     if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
         throw std::runtime_error("write(...) to pipe failed");
     }
 }
 
-void TimerManager::updateTimer(const pollfd &pfd, unsigned int msec, bool oneShot) {
+void TimerManager::updateTimer(pollfd *pfd, unsigned int msec, bool oneShot) {
     // Get current time
     struct timespec tm;
     clock_gettime(CLOCK_MONOTONIC, &tm);
@@ -105,7 +106,7 @@ void TimerManager::updateTimer(const pollfd &pfd, unsigned int msec, bool oneSho
     }
 
     // Apply new timer values
-    if (timerfd_settime(pfd.fd, TFD_TIMER_ABSTIME, &timerspec, nullptr) == -1) {
+    if (timerfd_settime(pfd->fd, TFD_TIMER_ABSTIME, &timerspec, nullptr) == -1) {
         throw std::runtime_error("timerfd_settime(...) failed");
     }
 

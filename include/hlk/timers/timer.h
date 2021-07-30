@@ -53,15 +53,12 @@ protected:
     static TimerManager m_timerManager;
 
     void hueta();
-
-    enum class State;
-    int m_timerfd = 0;
+    
     unsigned int m_interval = 0;
     bool m_oneShot = false;
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
-    bool m_deleted = false;
     pollfd *m_pfd = nullptr;
 };
 

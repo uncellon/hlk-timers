@@ -9,15 +9,19 @@ namespace Hlk {
 
 TimerManager Timer::m_timerManager;
 
-Timer::Timer() { }
+Timer::Timer() { 
+    m_pfd = nullptr;
+}
 
-Timer::~Timer() { }
+Timer::~Timer() { 
+    stop();
+}
 
 bool Timer::start(unsigned int msec) {
-    if (!m_pfd) {
-        m_pfd = &m_timerManager.createTimer(msec, m_oneShot, Hlk::Delegate<void>(this, &Timer::hueta));
+    if (m_pfd == nullptr) {
+        m_pfd = m_timerManager.createTimer(msec, m_oneShot, Hlk::Delegate<void>(this, &Timer::hueta));
     } else {
-        m_timerManager.updateTimer(*m_pfd, msec, m_oneShot);
+        m_timerManager.updateTimer(m_pfd, msec, m_oneShot);
         if (m_called) {
             m_selfRestart = true;
         }
@@ -28,8 +32,8 @@ bool Timer::start(unsigned int msec) {
 }
 
 void Timer::stop() { 
-    if (m_pfd) {
-        m_timerManager.deleteTimer(*m_pfd);
+    if (m_pfd != nullptr) {
+        m_timerManager.deleteTimer(m_pfd);
         m_pfd = nullptr;
         m_started = false;
     }

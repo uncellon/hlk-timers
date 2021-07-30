@@ -17,9 +17,9 @@ public:
     TimerManager();
     ~TimerManager();
 
-    pollfd &createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback);
-    void deleteTimer(pollfd &pfd);
-    void updateTimer(const pollfd &pfd, unsigned int msec, bool oneShot);
+    pollfd *createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback);
+    void deleteTimer(pollfd *pfd);
+    void updateTimer(pollfd *pfd, unsigned int msec, bool oneShot);
 
 protected:
     void loop();
