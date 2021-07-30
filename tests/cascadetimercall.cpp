@@ -50,6 +50,7 @@ int main(int argc, char* argv[]) {
     timer5.onTimeout.addEventHandler(timerHandler5);
 
     timer1.start(1);
+    std::cout << "Timer started\n";
     std::mutex m;
     std::unique_lock lock(m);
     cv.wait_for(lock, std::chrono::seconds(3));

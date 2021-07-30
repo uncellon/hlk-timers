@@ -1,6 +1,8 @@
 #ifndef HLK_TIMER_H
 #define HLK_TIMER_H
 
+#include "timermanager.h"
+
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -11,14 +13,9 @@
 #include <hlk/events/event.h>
 #include <hlk/events/delegate.h>
 
-#define TIMER_ADDED 1
-#define TIMER_DELETED 2
-#define TIMER_THREAD_END 3
-#define TIMER_UPDATED 4
-
 namespace Hlk {
 
-class Timer {
+class Timer : public NotifierObject {
 public:
     /**************************************************************************
      * Constructors / Destructors
@@ -53,25 +50,9 @@ public:
     bool started() const;
 
 protected:
-    static void timerLoop();
+    static TimerManager m_timerManager;
 
-    static unsigned int m_counter;
-    static std::thread *m_timerThread;
-    static bool m_timerLoopRunning;
-    static std::vector<pollfd> m_pollFds;
-    static std::vector<Timer *> m_timerInstances;
-    static int m_pipes[2];
-    static std::shared_mutex m_sharedMutex;
-    static std::condition_variable m_cv;
-    static char m_interrupt;
-    static bool m_threadCreated;
-
-    /**************************************************************************
-     * Private methods
-     *************************************************************************/
-
-    void resumeThread();
-    void interruptThread(uint8_t signal);
+    void hueta();
 
     enum class State;
     int m_timerfd = 0;
@@ -81,6 +62,7 @@ protected:
     bool m_called = false;
     bool m_selfRestart = false;
     bool m_deleted = false;
+    pollfd *m_pfd = nullptr;
 };
 
 /******************************************************************************
