@@ -10,27 +10,47 @@
 
 namespace Hlk {
 
-class Timer;
+/******************************************************************************
+ * Main class
+ *****************************************************************************/
 
 class TimerManager {
 public:
+    /**************************************************************************
+     * Constructors / Destructors
+     *************************************************************************/
+
     TimerManager();
     ~TimerManager();
+
+    /**************************************************************************
+     * Public methods
+     *************************************************************************/
 
     int createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback);
     void deleteTimer(int timerfd);
     void updateTimer(int timerfd, unsigned int msec, bool oneShot);
 
 protected:
+    /**************************************************************************
+     * Private methods
+     *************************************************************************/
+
     void loop();
+
+    /**************************************************************************
+     * Private members
+     *************************************************************************/
 
     std::vector<pollfd> m_pfds;
     std::vector<Hlk::Delegate<void>> m_callbacks;
+
+    std::mutex m_pipeMutex;
+    std::mutex m_pfdsMutex;
+
     std::thread *m_thread = nullptr;
     bool m_threadRunning = false;
     int m_pipes[2];
-    std::mutex m_pipeMutex;
-    std::mutex m_pfdsMutex;
 };
 
 } // namespace Hlk

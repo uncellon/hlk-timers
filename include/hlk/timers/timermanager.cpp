@@ -24,11 +24,23 @@ TimerManager::TimerManager() {
     m_thread = new std::thread(&TimerManager::loop, this);
 }
 
-TimerManager::~TimerManager() { 
+TimerManager::~TimerManager() {
+    // Delete thread
     m_threadRunning = false;
     write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
     m_thread->join();
     delete m_thread;
+
+    // Close timers
+    for (size_t i = 0; i < m_pfds.size(); ++i) {
+        close(m_pfds[i].fd);
+    }
+    m_pfds.clear();
+    m_callbacks.clear();
+
+    // Close pipes
+    close(m_pipes[0]);
+    close(m_pipes[1]);
 }
 
 int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
@@ -94,7 +106,6 @@ void TimerManager::deleteTimer(int timerfd) {
         if (timerfd == m_pfds[i].fd) {
             close(m_pfds[i].fd);
             m_pfds[i].fd = 0;
-            m_pfds[i].events = 0;
         }
     }
     m_pfdsMutex.unlock();
@@ -140,6 +151,10 @@ void TimerManager::loop() {
         ret = poll(m_pfds.data(), m_pfds.size(), -1);
         m_pfdsMutex.unlock();
 
+        if (ret <= 0) {
+            continue;
+        }
+
         // Clear pipe
         if (m_pfds[0].revents == POLLIN) {
             m_pfds[0].revents = 0;
@@ -165,8 +180,7 @@ void TimerManager::loop() {
                 }
 
                 // Timer was deleted
-                if (m_pfds[i].events == 0) {
-                    close(m_pfds[i].fd);
+                if (m_pfds[i].fd == 0) {
                     m_pfds.erase(m_pfds.begin() + i);
                     m_callbacks.erase(m_callbacks.begin() + i - 1);
                     --i;
