@@ -3,15 +3,7 @@
 
 #include "timermanager.h"
 
-#include <mutex>
-#include <thread>
-#include <vector>
-#include <sys/poll.h>
-#include <shared_mutex>
-#include <sys/timerfd.h>
-#include <condition_variable>
 #include <hlk/events/event.h>
-#include <hlk/events/delegate.h>
 
 namespace Hlk {
 
@@ -41,9 +33,6 @@ public:
      * Accessors / Mutators
      *************************************************************************/
 
-    unsigned int interval() const;
-    void setInterval(unsigned int msec);
-
     bool oneShot() const;
     void setOneShot(bool value);
 
@@ -52,22 +41,26 @@ public:
 protected:
     static TimerManager m_timerManager;
 
+    /**************************************************************************
+     * Private methods
+     *************************************************************************/
+
     void timerManagerCallback();
     
-    unsigned int m_interval = 0;
+    /**************************************************************************
+     * Private members
+     *************************************************************************/
+
+    int m_timerfd = 0;
     bool m_oneShot = false;
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
-    int m_timerfd = 0;
 };
 
 /******************************************************************************
  * Inline
  *****************************************************************************/
-
-inline unsigned int Timer::interval() const { return m_interval; }
-inline void Timer::setInterval(unsigned int msec) { m_interval = msec; }
 
 inline bool Timer::oneShot() const { return m_oneShot; }
 inline void Timer::setOneShot(bool value) { m_oneShot = value; }

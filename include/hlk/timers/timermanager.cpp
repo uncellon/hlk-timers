@@ -1,9 +1,9 @@
 #include "timermanager.h"
 
-#include <sys/timerfd.h>
-#include <stdexcept>
 #include <cstring>
 #include <unistd.h>
+#include <stdexcept>
+#include <sys/timerfd.h>
 
 namespace Hlk {
 

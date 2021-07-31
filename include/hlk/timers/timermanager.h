@@ -4,9 +4,7 @@
 #include <poll.h>
 #include <vector>
 #include <thread>
-
 #include <hlk/events/event.h>
-#include <condition_variable>
 
 namespace Hlk {
 

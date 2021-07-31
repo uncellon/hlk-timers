@@ -1,10 +1,5 @@
 #include "timer.h"
 
-#include <unistd.h>
-#include <signal.h>
-#include <cstring>
-#include <stdexcept>
-
 namespace Hlk {
 
 TimerManager Timer::m_timerManager;
