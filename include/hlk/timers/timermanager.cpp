@@ -31,7 +31,7 @@ TimerManager::~TimerManager() {
     delete m_thread;
 }
 
-pollfd *TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
+int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
     // Create timerfd
     int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (timerfd == -1) {
@@ -65,29 +65,43 @@ pollfd *TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate
     pfd.fd = timerfd;
     pfd.events = POLLIN;
 
-    m_mutex.lock();
-    if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
-        throw std::runtime_error("write(...) to pipe failed");
+    m_pipeMutex.lock();
+    if (!m_pfdsMutex.try_lock()) {
+        if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
+            throw std::runtime_error("write(...) to pipe failed");
+        }
+        m_pfdsMutex.lock();
     }
 
     m_callbacks.push_back(callback);
     m_pfds.push_back(pfd);
-    pollfd *last = &m_pfds.back();
 
-    m_mutex.unlock();
+    m_pfdsMutex.unlock();
+    m_pipeMutex.unlock();
 
-    return last;
+    return pfd.fd;
 }
 
-void TimerManager::deleteTimer(pollfd *pfd) {
-    pfd->events = 0;
-
-    if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
-        throw std::runtime_error("write(...) to pipe failed");
+void TimerManager::deleteTimer(int timerfd) {
+    m_pipeMutex.lock();
+    if (!m_pfdsMutex.try_lock()) {
+        if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
+            throw std::runtime_error("write(...) to pipe failed");
+        }
+        m_pfdsMutex.lock();
     }
+    for (size_t i = 1; i < m_pfds.size(); ++i) {
+        if (timerfd == m_pfds[i].fd) {
+            close(m_pfds[i].fd);
+            m_pfds[i].fd = 0;
+            m_pfds[i].events = 0;
+        }
+    }
+    m_pfdsMutex.unlock();
+    m_pipeMutex.unlock();
 }
 
-void TimerManager::updateTimer(pollfd *pfd, unsigned int msec, bool oneShot) {
+void TimerManager::updateTimer(int timerfd, unsigned int msec, bool oneShot) {
     // Get current time
     struct timespec tm;
     clock_gettime(CLOCK_MONOTONIC, &tm);
@@ -106,7 +120,7 @@ void TimerManager::updateTimer(pollfd *pfd, unsigned int msec, bool oneShot) {
     }
 
     // Apply new timer values
-    if (timerfd_settime(pfd->fd, TFD_TIMER_ABSTIME, &timerspec, nullptr) == -1) {
+    if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &timerspec, nullptr) == -1) {
         throw std::runtime_error("timerfd_settime(...) failed");
     }
 
@@ -116,15 +130,15 @@ void TimerManager::updateTimer(pollfd *pfd, unsigned int msec, bool oneShot) {
 }
 
 void TimerManager::loop() {
-    int pollingRet = 0;
+    int ret = 0;
     ssize_t bytesRead = 0;
     uint64_t exp;
     size_t i = 1;
-    std::mutex mutex;
-    std::unique_lock lock(mutex);
 
     while (m_threadRunning) {
-        pollingRet = poll(m_pfds.data(), m_pfds.size(), -1);
+        m_pfdsMutex.lock();
+        ret = poll(m_pfds.data(), m_pfds.size(), -1);
+        m_pfdsMutex.unlock();
 
         // Clear pipe
         if (m_pfds[0].revents == POLLIN) {
@@ -133,12 +147,15 @@ void TimerManager::loop() {
                 bytesRead = read(m_pfds[0].fd, &exp, sizeof(uint64_t));
             } while (bytesRead == sizeof(uint64_t));
 
-            m_mutex.lock();
-            m_mutex.unlock();
-            // continue;
+            m_pipeMutex.lock();
+            m_pipeMutex.unlock();
+            if (ret == 1) {
+                continue;
+            }
         }
 
         // Process timers
+        m_pfdsMutex.lock();
         for (i = 1; i < m_pfds.size(); ++i) {
             if (m_pfds[i].revents == POLLIN) {
                 m_pfds[i].revents = 0;
@@ -149,15 +166,19 @@ void TimerManager::loop() {
 
                 // Timer was deleted
                 if (m_pfds[i].events == 0) {
+                    close(m_pfds[i].fd);
                     m_pfds.erase(m_pfds.begin() + i);
                     m_callbacks.erase(m_callbacks.begin() + i - 1);
                     --i;
                     continue;
                 }
 
+                m_pfdsMutex.unlock();
                 m_callbacks[i - 1]();
+                m_pfdsMutex.lock();
             }
         }
+        m_pfdsMutex.unlock();
     }
 }
 

@@ -17,9 +17,9 @@ public:
     TimerManager();
     ~TimerManager();
 
-    pollfd *createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback);
-    void deleteTimer(pollfd *pfd);
-    void updateTimer(pollfd *pfd, unsigned int msec, bool oneShot);
+    int createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback);
+    void deleteTimer(int timerfd);
+    void updateTimer(int timerfd, unsigned int msec, bool oneShot);
 
 protected:
     void loop();
@@ -29,7 +29,8 @@ protected:
     std::thread *m_thread = nullptr;
     bool m_threadRunning = false;
     int m_pipes[2];
-    std::mutex m_mutex;
+    std::mutex m_pipeMutex;
+    std::mutex m_pfdsMutex;
 };
 
 } // namespace Hlk

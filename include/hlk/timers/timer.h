@@ -52,14 +52,14 @@ public:
 protected:
     static TimerManager m_timerManager;
 
-    void hueta();
+    void timerManagerCallback();
     
     unsigned int m_interval = 0;
     bool m_oneShot = false;
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
-    pollfd *m_pfd = nullptr;
+    int m_timerfd = 0;
 };
 
 /******************************************************************************
