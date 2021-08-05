@@ -2,8 +2,6 @@
 
 ## License
 
-* * *
-
 <img align="right" src="https://www.gnu.org/graphics/lgplv3-with-text-154x68.png">
 
 The library is licensed under [GNU Lesser General Public License 3.0](https://www.gnu.org/licenses/lgpl-3.0.txt):
