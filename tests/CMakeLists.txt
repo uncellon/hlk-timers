@@ -15,3 +15,6 @@ target_link_libraries(StopFromTimerTest ${PROJECT_NAME})
 
 add_executable(StopTimerTest stoptimer.cpp)
 target_link_libraries(StopTimerTest ${PROJECT_NAME})
+
+add_executable(ConcurrenceTest concurrence.cpp)
+target_link_libraries(ConcurrenceTest ${PROJECT_NAME})

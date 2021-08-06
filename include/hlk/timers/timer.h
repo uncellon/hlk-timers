@@ -26,6 +26,7 @@
 #include "timermanager.h"
 
 #include <hlk/events/event.h>
+#include <mutex>
 
 namespace Hlk {
 
@@ -78,6 +79,7 @@ protected:
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
+    std::mutex m_mutex;
 };
 
 /******************************************************************************
