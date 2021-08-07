@@ -57,6 +57,7 @@ protected:
      *************************************************************************/
 
     void loop();
+    void interruptThread();
 
     /**************************************************************************
      * Private members
@@ -67,10 +68,12 @@ protected:
 
     std::mutex m_pipeMutex;
     std::mutex m_pfdsMutex;
+    std::mutex m_interruptMutex;
 
     std::thread *m_thread = nullptr;
     bool m_running = false;
     int m_pipes[2];
+    int m_bytes = 0;
 };
 
 } // namespace Hlk
