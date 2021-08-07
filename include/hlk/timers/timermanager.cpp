@@ -30,6 +30,10 @@
 
 namespace Hlk {
 
+/******************************************************************************
+ * Constructors / Destructors
+ *****************************************************************************/
+
 TimerManager::TimerManager() {
     // Create pipe to interrupt polling
     if (pipe(m_pipes) == -1) {
@@ -66,6 +70,10 @@ TimerManager::~TimerManager() {
     close(m_pipes[0]);
     close(m_pipes[1]);
 }
+
+/******************************************************************************
+ * Public methods
+ *****************************************************************************/
 
 int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
     std::unique_lock lock(m_pipeMutex);
@@ -168,6 +176,10 @@ void TimerManager::updateTimer(int timerfd, unsigned int msec, bool oneShot) {
     //     throw std::runtime_error("write(...) to pipe failed");
     // }
 }
+
+/******************************************************************************
+ * Private methods
+ *****************************************************************************/
 
 void TimerManager::loop() {
     int ret = 0;
