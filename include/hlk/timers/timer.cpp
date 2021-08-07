@@ -34,28 +34,34 @@ Timer::~Timer() {
 
 bool Timer::start(unsigned int msec) {
     m_mutex.lock();
-    if (!m_timerfd) {
-        m_timerfd = m_timerManager.createTimer(msec, m_oneShot, Hlk::Delegate<void>(this, &Timer::timerManagerCallback));
-    } else {
+
+    // Update existing timer
+    if (m_timerfd) {
         m_timerManager.updateTimer(m_timerfd, msec, m_oneShot);
         if (m_called) {
             m_selfRestart = true;
         }
-        m_selfRestart = true;
+        m_mutex.unlock();
+        return true;
     }
+
+    // Create new timer
+    m_timerfd = m_timerManager.createTimer(msec, m_oneShot, Hlk::Delegate<void>(this, &Timer::timerManagerCallback));
     m_started = true;
     m_mutex.unlock();
     return true;
 }
 
-void Timer::stop() { 
-    if (m_timerfd) {
-        m_mutex.lock();
-        m_timerManager.deleteTimer(m_timerfd);
-        m_timerfd = 0;
-        m_started = false;
+void Timer::stop() {
+    m_mutex.lock();
+    if (!m_timerfd) {
         m_mutex.unlock();
+        return;
     }
+    m_timerManager.deleteTimer(m_timerfd);
+    m_timerfd = 0;
+    m_started = false;
+    m_mutex.unlock();
 }
 
 void Timer::timerManagerCallback() {

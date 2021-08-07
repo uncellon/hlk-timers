@@ -69,7 +69,7 @@ protected:
     std::mutex m_pfdsMutex;
 
     std::thread *m_thread = nullptr;
-    bool m_threadRunning = false;
+    bool m_running = false;
     int m_pipes[2];
 };
 
