@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Timer started\n";
     std::mutex m;
     std::unique_lock lock(m);
-    cv.wait_for(lock, std::chrono::seconds(3));
+    cv.wait_for(lock, std::chrono::seconds(300));
     if (!called) {
         return EXIT_FAILURE;
     }

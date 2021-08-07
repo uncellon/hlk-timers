@@ -21,10 +21,7 @@ int main(int argc, char* argv[]) {
 
     {
         auto thr = std::thread([] () {
-            if (!timer.start(1)) {
-                std::cout << "Failed to start timer\n";
-                exit(EXIT_FAILURE);
-            }
+            timer.start(1);
         });
         thr.detach();
     }
