@@ -34,6 +34,7 @@ Timer::Timer() {
         pollfd pfd;
         pfd.fd = m_pipes[0];
         pfd.events = POLLIN;
+        pfd.revents = 0;
         m_pfds.push_back(pfd);
 
         m_running = true;
@@ -51,6 +52,15 @@ Timer::~Timer() {
         writeSafeInterrupt();
         m_rwMutex.unlock();
         m_thread->join();
+        m_thread = nullptr;
+
+        close(m_pipes[0]);
+        m_pipes[0] = 0;
+        close(m_pipes[1]);
+        m_pipes[1] = 0;
+
+        m_pfds.clear();
+        m_instances.clear();
     }
     m_cdtorMutex.unlock();
 }
@@ -123,6 +133,7 @@ void Timer::start(unsigned int msec) {
     pollfd pfd;
     pfd.fd = timerfd;
     pfd.events = POLLIN;
+    pfd.revents = 0;
 
     m_rwMutex.lock();
     writeSafeInterrupt();
