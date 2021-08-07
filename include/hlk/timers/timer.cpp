@@ -151,8 +151,6 @@ void Timer::stop() {
         close(m_timerfd);
         m_timerfd = 0;
         m_pfds[i].fd = 0;
-        // m_pfds.erase(m_pfds.begin() + i);
-        // m_instances.erase(m_instances.begin() + i - 1);
         break;
     }
 
@@ -187,7 +185,7 @@ void Timer::loop() {
         ret = poll(m_pfds.data(), m_pfds.size(), -1);
         m_pfdsMutex.unlock();
 
-        if (ret <= 0) continue;
+        if (ret == -1) throw std::runtime_error("poll(...) failed");
 
         if (m_pfds[0].revents == POLLIN) {
             m_pfds[0].revents = 0;
@@ -195,22 +193,23 @@ void Timer::loop() {
             do {
                 bytesRead = read(m_pfds[0].fd, &exp, sizeof(uint64_t));
                 m_rwBytes -= bytesRead;
-            } while (bytesRead == sizeof(uint64_t));
+            } while (m_rwBytes != 0);
             m_rwMutex.unlock();
-            if (ret == 1) continue;
         }
 
         m_pfdsMutex.lock();
         for (i = 1; i < m_pfds.size(); ++i) {
-            if (m_pfds[i].revents != POLLIN) continue;
-            m_pfds[i].revents = 0;
-
-            // stop(...) was called on the timer
+            // The timer was stopped
             if (m_pfds[i].fd == 0) {
                 m_pfds.erase(m_pfds.begin() + i);
                 m_instances.erase(m_instances.begin() + --i);
                 continue;
             }
+
+            if (m_pfds[i].revents != POLLIN) continue;            
+            m_pfds[i].revents = 0;
+
+            bytesRead = read(m_pfds[i].fd, &exp, sizeof(uint64_t));
 
             m_pfdsMutex.unlock();
             m_instances[i - 1]->onTimeout();
@@ -232,10 +231,14 @@ void Timer::loop() {
 
 void Timer::writeSafeInterrupt() {
     if ((++m_rwBytes) % sizeof(uint64_t) == 0) {
-        write(m_pipes[1], reinterpret_cast<const void *>("00"), 2);
+        if (write(m_pipes[1], reinterpret_cast<const void *>("00"), 2) == -1) {
+            throw std::runtime_error("write(...) to pipe failed");
+        }
         ++m_rwBytes;
     } else {
-        write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+        if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) == -1) {
+            throw std::runtime_error("write(...) to pipe failed");
+        }
     }
 }
 

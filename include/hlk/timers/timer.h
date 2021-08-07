@@ -35,6 +35,8 @@ public:
     bool oneShot() const;
     void setOneShot(bool value);
 
+    bool started() const;
+
 protected:
     /**************************************************************************
      * Static methods
@@ -67,6 +69,12 @@ protected:
     bool m_oneShot = false;
     bool m_updated = false;
 };
+
+/******************************************************************************
+ * Inline
+ *****************************************************************************/
+
+inline bool Timer::started() const { return m_timerfd; }
 
 } // namespace Hlk
 

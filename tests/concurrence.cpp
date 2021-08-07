@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
         }
     });
 
-    sleep(3);
+    sleep(10);
 
     threadsRunning = false;
     thread1.join();
