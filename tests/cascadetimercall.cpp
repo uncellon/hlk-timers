@@ -33,27 +33,29 @@ void timerHandler5() {
     cv.notify_one();
 }
 
+Hlk::Timer timers[10000];
+int currentTimer = 0;
+
 int main(int argc, char* argv[]) {
-    timer1.setOneShot(true);
-    timer1.onTimeout.addEventHandler(timerHandler1);
+    for (size_t i = 0; i < 9999; ++i) {
+        timers[i].setOneShot(true);
+        timers[i].onTimeout.addEventHandler([] () {
+            std::cout << "Timer " << currentTimer << " called\n";
+            timers[++currentTimer].start(1);
+        });
+    }
+    timers[9999].setOneShot(true);
+    timers[9999].onTimeout.addEventHandler([] () {
+        std::cout << "Timer 9999 called\n";
+        called = true;
+        cv.notify_one();
+    });
+    timers[0].start(1);
 
-    timer2.setOneShot(true);
-    timer2.onTimeout.addEventHandler(timerHandler2);
-
-    timer3.setOneShot(true);
-    timer3.onTimeout.addEventHandler(timerHandler3);
-
-    timer4.setOneShot(true);
-    timer4.onTimeout.addEventHandler(timerHandler4);
-
-    timer5.setOneShot(true);
-    timer5.onTimeout.addEventHandler(timerHandler5);
-
-    timer1.start(1);
     std::cout << "Timer started\n";
     std::mutex m;
     std::unique_lock lock(m);
-    cv.wait_for(lock, std::chrono::seconds(300));
+    cv.wait_for(lock, std::chrono::seconds(120));
     if (!called) {
         return EXIT_FAILURE;
     }
