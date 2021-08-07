@@ -24,7 +24,15 @@
 
 namespace Hlk {
 
+/******************************************************************************
+ * Static members
+ *****************************************************************************/
+
 TimerManager Timer::m_timerManager;
+
+/******************************************************************************
+ * Constructors / Destructors
+ *****************************************************************************/
 
 Timer::Timer() { }
 
@@ -32,8 +40,12 @@ Timer::~Timer() {
     stop();
 }
 
+/******************************************************************************
+ * Public methods
+ *****************************************************************************/
+
 bool Timer::start(unsigned int msec) {
-    m_mutex.lock();
+    m_startStopMutex.lock();
 
     // Update existing timer
     if (m_timerfd) {
@@ -41,28 +53,32 @@ bool Timer::start(unsigned int msec) {
         if (m_called) {
             m_selfRestart = true;
         }
-        m_mutex.unlock();
+        m_startStopMutex.unlock();
         return true;
     }
 
     // Create new timer
     m_timerfd = m_timerManager.createTimer(msec, m_oneShot, Hlk::Delegate<void>(this, &Timer::timerManagerCallback));
     m_started = true;
-    m_mutex.unlock();
+    m_startStopMutex.unlock();
     return true;
 }
 
 void Timer::stop() {
-    m_mutex.lock();
+    m_startStopMutex.lock();
     if (!m_timerfd) {
-        m_mutex.unlock();
+        m_startStopMutex.unlock();
         return;
     }
     m_timerManager.deleteTimer(m_timerfd);
     m_timerfd = 0;
     m_started = false;
-    m_mutex.unlock();
+    m_startStopMutex.unlock();
 }
+
+/******************************************************************************
+ * Private methods
+ *****************************************************************************/
 
 void Timer::timerManagerCallback() {
     m_called = true;

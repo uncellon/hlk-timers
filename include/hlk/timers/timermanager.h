@@ -57,7 +57,7 @@ protected:
      *************************************************************************/
 
     void loop();
-    void interruptThread();
+    void writeSafeInterrupt();
 
     /**************************************************************************
      * Private members
@@ -66,9 +66,8 @@ protected:
     std::vector<pollfd> m_pfds;
     std::vector<Hlk::Delegate<void>> m_callbacks;
 
-    std::mutex m_pipeMutex;
     std::mutex m_pfdsMutex;
-    std::mutex m_interruptMutex;
+    std::mutex m_readWriteMutex;
 
     std::thread *m_thread = nullptr;
     bool m_running = false;

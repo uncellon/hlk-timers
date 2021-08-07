@@ -35,12 +35,12 @@ namespace Hlk {
  *****************************************************************************/
 
 TimerManager::TimerManager() {
-    // Create pipe to interrupt polling
+    // Create a pipe to be able to interrupt the timer thread
     if (pipe(m_pipes) == -1) {
         throw std::runtime_error("pipe(...) failed");
     }
 
-    // Create pipe polling descriptor;
+    // Create pipe polling descriptor
     pollfd pfd;
     pfd.fd = m_pipes[0];
     pfd.events = POLLIN;
@@ -54,8 +54,9 @@ TimerManager::TimerManager() {
 TimerManager::~TimerManager() {
     // Delete thread
     m_running = false;
-    interruptThread();
-    // write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+    m_readWriteMutex.lock();
+    writeSafeInterrupt();
+    m_readWriteMutex.unlock();
     m_thread->join();
     delete m_thread;
 
@@ -76,11 +77,12 @@ TimerManager::~TimerManager() {
  *****************************************************************************/
 
 int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<void> callback) {
-    std::unique_lock lock(m_pipeMutex);
-
     // Create timerfd
     int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (timerfd == -1) {
+        if (errno == EMFILE) {
+            throw std::runtime_error("timerfd_create(...) failed, too many timers");
+        }
         throw std::runtime_error("timerfd_create(...) failed");
     }
 
@@ -89,19 +91,19 @@ int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<voi
     clock_gettime(CLOCK_MONOTONIC, &tm);
 
     // Set new timer values
-    itimerspec timerspec;
-    timerspec.it_value.tv_sec = tm.tv_sec + (msec / 1000);
-    timerspec.it_value.tv_nsec = (tm.tv_nsec + (msec % 1000) * 1000000) % 1000000000;
+    itimerspec spec;
+    spec.it_value.tv_sec = tm.tv_sec + (msec / 1000);
+    spec.it_value.tv_nsec = (tm.tv_nsec + (msec % 1000) * 1000000) % 1000000000;
     if (oneShot) {
-        timerspec.it_interval.tv_sec = 0;
-        timerspec.it_interval.tv_nsec = 0;
+        spec.it_interval.tv_sec = 0;
+        spec.it_interval.tv_nsec = 0;
     } else {
-        timerspec.it_interval.tv_sec = msec / 1000;
-        timerspec.it_interval.tv_nsec = (msec % 1000) * 1000000;
+        spec.it_interval.tv_sec = msec / 1000;
+        spec.it_interval.tv_nsec = (msec % 1000) * 1000000;
     }
 
     // Apply new timer values
-    if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &timerspec, nullptr) == -1) {
+    if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &spec, nullptr) == -1) {
         throw std::runtime_error("timerfd_settime(...) failed");
     }
 
@@ -110,42 +112,43 @@ int TimerManager::createTimer(unsigned int msec, bool oneShot, Hlk::Delegate<voi
     pfd.fd = timerfd;
     pfd.events = POLLIN;
 
-    // m_pipeMutex.lock();
+    // Interrupt thread
+    m_readWriteMutex.lock();
     if (!m_pfdsMutex.try_lock()) {
-        interruptThread();
-        // if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
-        //     throw std::runtime_error("write(...) to pipe failed");
-        // }
+        writeSafeInterrupt();
         m_pfdsMutex.lock();
     }
 
+    // Append data
     m_callbacks.push_back(callback);
     m_pfds.push_back(pfd);
 
+    // Resume thread
     m_pfdsMutex.unlock();
-    // m_pipeMutex.unlock();
+    m_readWriteMutex.unlock();
 
     return pfd.fd;
 }
 
 void TimerManager::deleteTimer(int timerfd) {
-    m_pipeMutex.lock();
+    // Interrupt thread
+    m_readWriteMutex.lock();
     if (!m_pfdsMutex.try_lock()) {
-        interruptThread();
-        // if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
-        //     throw std::runtime_error("write(...) to pipe failed");
-        // }
+        writeSafeInterrupt();
         m_pfdsMutex.lock();
     }
+
+    // Delete timer data
     for (size_t i = 1; i < m_pfds.size(); ++i) {
         if (m_pfds[i].fd != timerfd) continue;
-
         close(m_pfds[i].fd);
         m_pfds[i].fd = 0;
         break;
     }
+
+    // Resume thread
     m_pfdsMutex.unlock();
-    m_pipeMutex.unlock();
+    m_readWriteMutex.unlock();
 }
 
 void TimerManager::updateTimer(int timerfd, unsigned int msec, bool oneShot) {
@@ -171,10 +174,10 @@ void TimerManager::updateTimer(int timerfd, unsigned int msec, bool oneShot) {
         throw std::runtime_error("timerfd_settime(...) failed");
     }
 
-    interruptThread();
-    // if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) != 1) {
-    //     throw std::runtime_error("write(...) to pipe failed");
-    // }
+    // Interrupt thread
+    m_readWriteMutex.lock();
+    writeSafeInterrupt();
+    m_readWriteMutex.unlock();
 }
 
 /******************************************************************************
@@ -197,15 +200,13 @@ void TimerManager::loop() {
         // Clear pipe
         if (m_pfds[0].revents == POLLIN) {
             m_pfds[0].revents = 0;
-            m_interruptMutex.lock();
+
+            m_readWriteMutex.lock();
             do {
                 bytesRead = read(m_pfds[0].fd, &exp, sizeof(uint64_t));
                 m_bytes -= bytesRead;
             } while (bytesRead == sizeof(uint64_t));
-            m_interruptMutex.unlock();
-
-            m_pipeMutex.lock();
-            m_pipeMutex.unlock();
+            m_readWriteMutex.unlock();
 
             if (ret == 1) continue;
         }
@@ -236,18 +237,15 @@ void TimerManager::loop() {
     }
 }
 
-inline void TimerManager::interruptThread() {
-    m_interruptMutex.lock();
+inline void TimerManager::writeSafeInterrupt() {
+    // Write two bytes to avoid lock by read(...)
     if ((m_bytes + 1) % sizeof(uint64_t) == 0) {
         write(m_pipes[1], reinterpret_cast<const void *>("00"), 2);
         m_bytes += 2;
-        m_interruptMutex.unlock();
-        return;
+    } else {
+        write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
+        ++m_bytes;
     }
-
-    write(m_pipes[1], reinterpret_cast<const void *>("0"), 1);
-    ++m_bytes;
-    m_interruptMutex.unlock();
 }
 
 } // namespace Hlk

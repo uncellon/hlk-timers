@@ -62,6 +62,10 @@ public:
     bool started() const;
 
 protected:
+    /**************************************************************************
+     * Static members
+     *************************************************************************/
+
     static TimerManager m_timerManager;
 
     /**************************************************************************
@@ -79,7 +83,7 @@ protected:
     bool m_started = false;
     bool m_called = false;
     bool m_selfRestart = false;
-    std::mutex m_mutex;
+    std::mutex m_startStopMutex;
 };
 
 /******************************************************************************
