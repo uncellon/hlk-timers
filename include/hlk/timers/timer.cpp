@@ -198,7 +198,7 @@ void Timer::loop() {
 
         if (ret == -1) throw std::runtime_error("poll(...) failed");
 
-        if (m_pfds[0].revents == POLLIN) {
+        if (m_pfds[0].revents & POLLIN) {
             m_pfds[0].revents = 0;
             m_rwMutex.lock();
             do {
@@ -217,7 +217,7 @@ void Timer::loop() {
                 continue;
             }
 
-            if (m_pfds[i].revents != POLLIN) continue;            
+            if (!m_pfds[i].revents & POLLIN) continue;            
             m_pfds[i].revents = 0;
 
             bytesRead = read(m_pfds[i].fd, &exp, sizeof(uint64_t));
