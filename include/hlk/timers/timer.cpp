@@ -167,6 +167,7 @@ void Timer::start(unsigned int msec) {
     m_pfdsMutex.unlock();
     m_rwMutex.unlock();
     m_timerfd = timerfd;
+    m_updated = true;
 }
 
 void Timer::stop() {

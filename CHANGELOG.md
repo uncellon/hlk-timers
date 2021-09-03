@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.2.3 - 2021-09-03
+
+### Fixed
+
+- Bug when timer was deleted after stopping itself onTimeout() handler and starting again
+
 ## 1.2.2 - 2021-09-03
 
 ### Added
