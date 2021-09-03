@@ -86,7 +86,7 @@ protected:
      * Private members
      *************************************************************************/
 
-    int m_timerfd = 0;
+    int m_timerfd = -1;
     std::mutex m_mutex;
     bool m_oneShot = false;
     bool m_updated = false;
@@ -96,7 +96,7 @@ protected:
  * Inline
  *****************************************************************************/
 
-inline bool Timer::started() const { return m_timerfd; }
+inline bool Timer::started() const { return m_timerfd > -1 ? true : false; }
 
 } // namespace Hlk
 

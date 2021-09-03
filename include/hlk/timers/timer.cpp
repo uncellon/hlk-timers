@@ -95,7 +95,7 @@ void Timer::start(unsigned int msec) {
     std::unique_lock lock(m_mutex);
 
     // Update existing timer
-    if (m_timerfd) {
+    if (started()) {
         timespec time;
         clock_gettime(CLOCK_MONOTONIC, &time);
 
@@ -112,7 +112,7 @@ void Timer::start(unsigned int msec) {
 
         if (timerfd_settime(m_timerfd, TFD_TIMER_ABSTIME, &spec, nullptr) == -1) {
             close(m_timerfd);
-            m_timerfd = 0;
+            m_timerfd = -1;
             throw std::runtime_error("timerfd_settime(...) failed");
         }
 
@@ -171,7 +171,7 @@ void Timer::start(unsigned int msec) {
 
 void Timer::stop() {
     std::unique_lock lock(m_mutex);
-    if (!m_timerfd) {
+    if (!started()) {
         return;
     }
 
@@ -182,8 +182,8 @@ void Timer::stop() {
     for (size_t i = 1; i < m_pfds.size(); ++i) {
         if (m_pfds[i].fd != m_timerfd) continue;
         close(m_timerfd);
-        m_timerfd = 0;
-        m_pfds[i].fd = 0;
+        m_timerfd = -1;
+        m_pfds[i].fd = -1;
         break;
     }
 
@@ -233,7 +233,7 @@ void Timer::loop() {
         m_pfdsMutex.lock();
         for (i = 1; i < m_pfds.size(); ++i) {
             // The timer was stopped
-            if (m_pfds[i].fd == 0) {
+            if (m_pfds[i].fd == -1) {
                 m_pfds.erase(m_pfds.begin() + i);
                 m_instances.erase(m_instances.begin() + --i);
                 continue;
@@ -251,7 +251,7 @@ void Timer::loop() {
             // Check oneShot timer
             if (m_instances[i - 1]->m_oneShot && !m_instances[i - 1]->m_updated) {
                 close(m_pfds[i].fd);
-                m_instances[i - 1]->m_timerfd = 0;
+                m_instances[i - 1]->m_timerfd = -1;
                 m_pfds.erase(m_pfds.begin() + i);
                 m_instances.erase(m_instances.begin() + --i);
                 continue;
