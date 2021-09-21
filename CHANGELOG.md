@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.2.4 - 2021-09-21
+
+### Fixed
+
+- Bug when the timer descriptor was reset to -1 in the timer handler thread, but another thread updated the timer 
+
 ## 1.2.3 - 2021-09-03
 
 ### Fixed

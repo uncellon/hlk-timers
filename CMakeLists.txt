@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(HlkTimers VERSION 1.2.3)
+project(HlkTimers VERSION 1.2.4)
 
 option(BUILD_EXAMPLES "Build examples" ON)
 option(BUILD_TESTS "Build tests" ON)
