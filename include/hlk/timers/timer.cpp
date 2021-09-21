@@ -113,7 +113,7 @@ void Timer::start(unsigned int msec) {
         if (timerfd_settime(m_timerfd, TFD_TIMER_ABSTIME, &spec, nullptr) == -1) {
             close(m_timerfd);
             m_timerfd = -1;
-            throw std::runtime_error("timerfd_settime(...) failed");
+            throw std::runtime_error("timerfd_settime(...) failed, errno: " + std::to_string(errno));
         }
 
         m_rwMutex.lock();
@@ -251,8 +251,10 @@ void Timer::loop() {
 
             // Check oneShot timer
             if (m_instances[i - 1]->m_oneShot && !m_instances[i - 1]->m_updated) {
+                m_instances[i - 1]->m_mutex.lock();
                 close(m_pfds[i].fd);
                 m_instances[i - 1]->m_timerfd = -1;
+                m_instances[i - 1]->m_mutex.unlock();
                 m_pfds.erase(m_pfds.begin() + i);
                 m_instances.erase(m_instances.begin() + --i);
                 continue;
