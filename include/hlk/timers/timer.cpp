@@ -167,7 +167,7 @@ void Timer::start(unsigned int msec) {
     m_pfdsMutex.unlock();
     m_rwMutex.unlock();
     m_timerfd = timerfd;
-    m_updated = true;
+    // m_updated = true;
 }
 
 void Timer::stop() {
@@ -251,7 +251,9 @@ void Timer::loop() {
 
             // Check oneShot timer
             if (m_instances[i - 1]->m_oneShot && !m_instances[i - 1]->m_updated) {
-                m_instances[i - 1]->m_mutex.lock();
+                if (!m_instances[i - 1]->m_mutex.try_lock()) {
+                    continue;
+                }
                 close(m_pfds[i].fd);
                 m_instances[i - 1]->m_timerfd = -1;
                 m_instances[i - 1]->m_mutex.unlock();

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.2.5 - 2021-09-22
+
+### Fixed
+
+- Deadlock when the timer was started and the one-time start flag was checked 
+
 ## 1.2.4 - 2021-09-21
 
 ### Fixed
