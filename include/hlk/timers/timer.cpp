@@ -100,8 +100,9 @@ void Timer::start(unsigned int msec) {
         clock_gettime(CLOCK_MONOTONIC, &time);
 
         itimerspec spec;
-        spec.it_value.tv_sec = time.tv_sec + (msec / 1000);
-        spec.it_value.tv_nsec = (time.tv_nsec + (msec % 1000) * 1000000) % 1000000000;
+        auto nsec = (msec % 1000) * 1000000;
+        spec.it_value.tv_sec = time.tv_sec + (msec / 1000) + (time.tv_nsec + nsec) / 1000000000;
+        spec.it_value.tv_nsec = (time.tv_nsec + nsec) % 1000000000;
         if (m_oneShot) {
             spec.it_interval.tv_sec = 0;
             spec.it_interval.tv_nsec = 0;

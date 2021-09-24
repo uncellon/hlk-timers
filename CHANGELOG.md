@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.2.6 - 2021-09-24
+
+### Fixed
+
+- Skip second when nanoseconds were rounded
+
 ## 1.2.5 - 2021-09-22
 
 ### Fixed
