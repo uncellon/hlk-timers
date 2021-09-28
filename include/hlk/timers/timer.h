@@ -30,7 +30,7 @@ namespace Hlk {
 
 class Timer {
 public:
-    friend void handler(int, siginfo_t *, void *);
+    friend void timerHandler(int, siginfo_t *, void *);
 
     /**************************************************************************
      * Constructors / Destructors
@@ -61,20 +61,18 @@ public:
 
     bool started() const;
 
-    std::mutex m_mutex;
-
 protected:
     /**************************************************************************
-     * Static methods
+     * Static: Methods
      *************************************************************************/
 
     static int reserveId(Timer *timer);
 
     /**************************************************************************
-     * Static members
+     * Static: Members
      *************************************************************************/
 
-    static std::mutex m_cdtor_mutex;
+    static std::mutex m_cdtorMutex;
     static std::mutex m_reserveMutex;
     static unsigned int m_counter;
 
@@ -82,28 +80,18 @@ protected:
      * Protected: Methods
      *************************************************************************/
 
-    /**
-     * @brief Create a timer object
-     * 
-     * Reserves the signal, bind it and return new timer_t
-     * 
-     * @param int 
-     * @return timer_t 
-     */
-    timer_t createTimer(unsigned int);
-
-    void deleteTimer(timer_t, int);
-
-    void setTime(timer_t, unsigned int);
-
+    timer_t createTimer(unsigned int msec);
+    void deleteTimer(timer_t timerid, int id);
+    void setTime(timer_t timerid, unsigned int msec);
     /**************************************************************************
-     * Private members
+     * Protected: Members
      *************************************************************************/
 
     bool m_oneShot = false;
     bool m_started = false;
     int m_id = -1;
     timer_t m_timerid = timer_t();
+    std::mutex m_mutex;
 };
 
 /******************************************************************************

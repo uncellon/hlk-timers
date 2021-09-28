@@ -33,7 +33,7 @@ namespace Hlk {
  * Static members
  *****************************************************************************/
 
-std::mutex Timer::m_cdtor_mutex;
+std::mutex Timer::m_cdtorMutex;
 std::mutex Timer::m_reserveMutex;
 unsigned int Timer::m_counter = 0;
 
@@ -43,42 +43,42 @@ unsigned int Timer::m_counter = 0;
 
 std::vector<Timer *> timerInstances;
 
-void handler(int sig, siginfo_t *si, void *uc) {
+void timerHandler(int sig, siginfo_t *si, void *uc) {
     auto index = si->_sifields._timer.si_sigval.sival_int;
-    auto timer_instance = timerInstances[index];
-    timer_instance->m_mutex.lock();
-    if (timer_instance->oneShot()) {
-        timer_instance->m_started = false;
-        timer_instance->deleteTimer(timer_instance->m_timerid, index);
+    auto timerInstance = timerInstances[index];
+    timerInstance->m_mutex.lock();
+    if (timerInstance->oneShot()) {
+        timerInstance->m_started = false;
+        timerInstance->deleteTimer(timerInstance->m_timerid, index);
     }
-    Pool::getInstance()->pushTask([timer_instance] () {
-        timer_instance->onTimeout();
+    Pool::getInstance()->pushTask([timerInstance] () {
+        timerInstance->onTimeout();
     });
-    timer_instance->m_mutex.unlock();
+    timerInstance->m_mutex.unlock();
 }
 
 Timer::Timer() {
-    m_cdtor_mutex.lock();
+    m_cdtorMutex.lock();
     if (++m_counter == 1) {
         // Register signal
         struct sigaction sa;
         sa.sa_flags = SA_SIGINFO;
-        sa.sa_sigaction = handler;
+        sa.sa_sigaction = timerHandler;
         sigemptyset(&sa.sa_mask);
         if (sigaction(TIMER_SIGNAL, &sa, nullptr) == -1) {
             throw std::runtime_error("sigaction(...) failed, errno: " 
                 + std::to_string(errno));
         }
     }
-    m_cdtor_mutex.unlock();
+    m_cdtorMutex.unlock();
 }
 
 Timer::~Timer() {
-    m_cdtor_mutex.lock();
+    m_cdtorMutex.lock();
     if (!--m_counter) {
         signal(TIMER_SIGNAL, SIG_DFL);
     }
-    m_cdtor_mutex.unlock();
+    m_cdtorMutex.unlock();
 }
 
 /******************************************************************************
@@ -120,7 +120,7 @@ void Timer::setOneShot(bool value) {
 }
 
 /******************************************************************************
- * Static methods
+ * Static: Methods
  *****************************************************************************/
 
 int Timer::reserveId(Timer *timer) {
