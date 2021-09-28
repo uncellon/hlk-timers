@@ -22,8 +22,10 @@
 
 #include "timer.h"
 
-#include <unistd.h>
-#include <sys/timerfd.h>
+#include <vector>
+#include <hlk/pool/pool.h>
+
+#define TIMER_SIGNAL SIGRTMIN
 
 namespace Hlk {
 
@@ -31,60 +33,52 @@ namespace Hlk {
  * Static members
  *****************************************************************************/
 
-std::vector<pollfd> Timer::m_pfds;
-std::vector<Timer *> Timer::m_instances;
-std::mutex Timer::m_pfdsMutex;
-std::mutex Timer::m_cdtorMutex;
-std::mutex Timer::m_rwMutex;
-std::thread *Timer::m_thread = nullptr;
-bool Timer::m_running = false;
+std::mutex Timer::m_cdtor_mutex;
+std::mutex Timer::m_reserveMutex;
 unsigned int Timer::m_counter = 0;
-unsigned int Timer::m_rwBytes;
-int Timer::m_pipes[2];
 
 /******************************************************************************
  * Constructors / Destructors
  *****************************************************************************/
 
-Timer::Timer() {
-    m_cdtorMutex.lock();
-    if (!m_counter++) {
-        if (pipe(m_pipes) == -1) {
-            throw std::runtime_error("pipe(...) failed");
-        }
+std::vector<Timer *> timerInstances;
 
-        pollfd pfd;
-        pfd.fd = m_pipes[0];
-        pfd.events = POLLIN;
-        pfd.revents = 0;
-        m_pfds.push_back(pfd);
-
-        m_running = true;
-        m_thread = new std::thread(&Timer::loop);
+void handler(int sig, siginfo_t *si, void *uc) {
+    auto index = si->_sifields._timer.si_sigval.sival_int;
+    auto timer_instance = timerInstances[index];
+    timer_instance->m_mutex.lock();
+    if (timer_instance->oneShot()) {
+        timer_instance->m_started = false;
+        timer_instance->deleteTimer(timer_instance->m_timerid, index);
     }
-    m_cdtorMutex.unlock();
+    Pool::getInstance()->pushTask([timer_instance] () {
+        timer_instance->onTimeout();
+    });
+    timer_instance->m_mutex.unlock();
+}
+
+Timer::Timer() {
+    m_cdtor_mutex.lock();
+    if (++m_counter == 1) {
+        // Register signal
+        struct sigaction sa;
+        sa.sa_flags = SA_SIGINFO;
+        sa.sa_sigaction = handler;
+        sigemptyset(&sa.sa_mask);
+        if (sigaction(TIMER_SIGNAL, &sa, nullptr) == -1) {
+            throw std::runtime_error("sigaction(...) failed, errno: " 
+                + std::to_string(errno));
+        }
+    }
+    m_cdtor_mutex.unlock();
 }
 
 Timer::~Timer() {
-    stop();
-    m_cdtorMutex.lock();
+    m_cdtor_mutex.lock();
     if (!--m_counter) {
-        m_running = false;
-        m_rwMutex.lock();
-        writeSafeInterrupt();
-        m_rwMutex.unlock();
-        m_thread->join();
-        m_thread = nullptr;
-
-        close(m_pipes[0]);
-        m_pipes[0] = 0;
-        close(m_pipes[1]);
-        m_pipes[1] = 0;
-
-        m_pfds.clear();
-        m_instances.clear();
+        signal(TIMER_SIGNAL, SIG_DFL);
     }
-    m_cdtorMutex.unlock();
+    m_cdtor_mutex.unlock();
 }
 
 /******************************************************************************
@@ -93,103 +87,24 @@ Timer::~Timer() {
 
 void Timer::start(unsigned int msec) {
     std::unique_lock lock(m_mutex);
-
-    // Update existing timer
-    if (started()) {
-        timespec time;
-        clock_gettime(CLOCK_MONOTONIC, &time);
-
-        itimerspec spec;
-        spec.it_value.tv_sec = time.tv_sec + (msec / 1000);
-        spec.it_value.tv_nsec = (time.tv_nsec + (msec % 1000) * 1000000) % 1000000000;
-        if (m_oneShot) {
-            spec.it_interval.tv_sec = 0;
-            spec.it_interval.tv_nsec = 0;
-        } else {
-            spec.it_interval.tv_sec = msec / 1000;
-            spec.it_interval.tv_nsec = (msec % 1000) * 1000000;
-        }
-
-        if (timerfd_settime(m_timerfd, TFD_TIMER_ABSTIME, &spec, nullptr) == -1) {
-            close(m_timerfd);
-            m_timerfd = -1;
-            throw std::runtime_error("timerfd_settime(...) failed, errno: " + std::to_string(errno));
-        }
-
-        m_rwMutex.lock();
-        writeSafeInterrupt();
-        m_rwMutex.unlock();
-
-        m_updated = true;
-        return;
+    if (!m_started) {
+        m_started = true;
+        m_timerid = createTimer(msec);
     }
-
-    // Create new timer
-    int timerfd = timerfd_create(CLOCK_MONOTONIC, 0);
-    if (timerfd == -1) {
-        if (errno == EMFILE) {
-            throw std::runtime_error("timerfd_create(...) failed, too many timers");
-        }
-        throw std::runtime_error("timerfd_create(...) failed");
-    }
-
-    timespec time;
-    clock_gettime(CLOCK_MONOTONIC, &time);
-
-    itimerspec spec;
-    spec.it_value.tv_sec = time.tv_sec + (msec / 1000);
-    spec.it_value.tv_nsec = (time.tv_nsec + (msec % 1000) * 1000000) % 1000000000;
-    if (m_oneShot) {
-        spec.it_interval.tv_sec = 0;
-        spec.it_interval.tv_nsec = 0;
-    } else {
-        spec.it_interval.tv_sec = msec / 1000;
-        spec.it_interval.tv_nsec = (msec % 1000) * 1000000;
-    }
-
-    if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &spec, nullptr) == -1) {
-        close(timerfd);
-        throw std::runtime_error("timerfd_settime(...) failed");
-    }
-
-    pollfd pfd;
-    pfd.fd = timerfd;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
-
-    m_rwMutex.lock();
-    writeSafeInterrupt();
-    m_pfdsMutex.lock();
-
-    m_pfds.push_back(pfd);
-    m_instances.push_back(this);
-
-    m_pfdsMutex.unlock();
-    m_rwMutex.unlock();
-    m_timerfd = timerfd;
-    // m_updated = true;
+    setTime(m_timerid, msec);
 }
 
 void Timer::stop() {
     std::unique_lock lock(m_mutex);
-    if (!started()) {
+
+    if (m_id == -1) {
         return;
     }
 
-    m_rwMutex.lock();
-    writeSafeInterrupt();
-    m_pfdsMutex.lock();
-
-    for (size_t i = 1; i < m_pfds.size(); ++i) {
-        if (m_pfds[i].fd != m_timerfd) continue;
-        close(m_timerfd);
-        m_timerfd = -1;
-        m_pfds[i].fd = -1;
-        break;
-    }
-
-    m_pfdsMutex.unlock();
-    m_rwMutex.unlock();
+    m_started = false;
+    deleteTimer(m_timerid, m_id);
+    m_timerid = timer_t();
+    m_id = -1;
 }
 
 /******************************************************************************
@@ -208,75 +123,70 @@ void Timer::setOneShot(bool value) {
  * Static methods
  *****************************************************************************/
 
-void Timer::loop() {
-    int ret = 0;
-    ssize_t bytesRead = 0;
-    uint64_t exp = 0;
-    size_t i = 1;
+int Timer::reserveId(Timer *timer) {
+    std::unique_lock lock(m_reserveMutex);
 
-    while (m_running) {
-        m_pfdsMutex.lock();
-        ret = poll(m_pfds.data(), m_pfds.size(), -1);
-        m_pfdsMutex.unlock();
-
-        if (ret == -1) throw std::runtime_error("poll(...) failed");
-
-        if (m_pfds[0].revents & POLLIN) {
-            m_pfds[0].revents = 0;
-            m_rwMutex.lock();
-            do {
-                bytesRead = read(m_pfds[0].fd, &exp, sizeof(uint64_t));
-                m_rwBytes -= bytesRead;
-            } while (m_rwBytes != 0);
-            m_rwMutex.unlock();
+    for (size_t i = 0; i < timerInstances.size(); ++i) {
+        if (timerInstances[i] != nullptr) {
+            continue;
         }
-
-        m_pfdsMutex.lock();
-        for (i = 1; i < m_pfds.size(); ++i) {
-            // The timer was stopped
-            if (m_pfds[i].fd == -1) {
-                m_pfds.erase(m_pfds.begin() + i);
-                m_instances.erase(m_instances.begin() + --i);
-                continue;
-            }
-
-            if (!m_pfds[i].revents & POLLIN) continue;            
-            m_pfds[i].revents = 0;
-
-            bytesRead = read(m_pfds[i].fd, &exp, sizeof(uint64_t));
-
-            m_pfdsMutex.unlock();
-            m_instances[i - 1]->onTimeout();
-            m_pfdsMutex.lock();
-
-            // Check oneShot timer
-            if (m_instances[i - 1]->m_oneShot && !m_instances[i - 1]->m_updated) {
-                if (!m_instances[i - 1]->m_mutex.try_lock()) {
-                    continue;
-                }
-                close(m_pfds[i].fd);
-                m_instances[i - 1]->m_timerfd = -1;
-                m_instances[i - 1]->m_mutex.unlock();
-                m_pfds.erase(m_pfds.begin() + i);
-                m_instances.erase(m_instances.begin() + --i);
-                continue;
-            }
-            m_instances[i - 1]->m_updated = false;
-        }
-        m_pfdsMutex.unlock();
+        timerInstances[i] = timer;
+        return i;
     }
+
+    timerInstances.push_back(timer);
+    return timerInstances.size() - 1;
 }
 
-void Timer::writeSafeInterrupt() {
-    if ((++m_rwBytes) % sizeof(uint64_t) == 0) {
-        if (write(m_pipes[1], reinterpret_cast<const void *>("00"), 2) == -1) {
-            throw std::runtime_error("write(...) to pipe failed");
-        }
-        ++m_rwBytes;
+/******************************************************************************
+ * Protected: Methods
+ *****************************************************************************/
+
+timer_t Timer::createTimer(unsigned int msec) {
+    timer_t timerid = timer_t();
+
+    // Reserve signal for this object
+    m_id = reserveId(this);
+
+    // Create sigevent for timer
+    struct sigevent sev;
+    sev.sigev_notify = SIGEV_SIGNAL;
+    sev.sigev_signo = TIMER_SIGNAL;
+    sev.sigev_value.sival_ptr = &timerid;
+    sev.sigev_value.sival_int = m_id;
+
+    if (timer_create(CLOCK_MONOTONIC, &sev, &timerid) == -1) {
+        throw std::runtime_error("timer_create(...) failed, errno: "
+            + std::to_string(errno));
+    }
+
+    return timerid;
+}
+
+void Timer::deleteTimer(timer_t timerid, int id) {
+    timer_delete(timerid);
+    timerInstances[id] = nullptr;
+}
+
+void Timer::setTime(timer_t timerid, unsigned int msec) {
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    itimerspec its;
+    auto nsec = (msec % 1000) * 1000000;
+    its.it_value.tv_sec = ts.tv_sec + (msec / 1000) + (ts.tv_nsec + nsec) / 1000000000;
+    its.it_value.tv_nsec = (ts.tv_nsec + nsec) % 1000000000;
+    if (m_oneShot) {
+        its.it_interval.tv_sec = 0;
+        its.it_interval.tv_nsec = 0;
     } else {
-        if (write(m_pipes[1], reinterpret_cast<const void *>("0"), 1) == -1) {
-            throw std::runtime_error("write(...) to pipe failed");
-        }
+        its.it_interval.tv_sec = msec / 1000;
+        its.it_interval.tv_nsec = (msec % 1000) * 1000000;
+    }
+
+    if (timer_settime(timerid, TIMER_ABSTIME, &its, nullptr) == -1) {
+        throw std::runtime_error("timerfd_settime(...) failed, errno: " 
+            + std::to_string(errno));
     }
 }
 
