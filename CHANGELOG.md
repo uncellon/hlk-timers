@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 2.0.0 - 2021-09-28
+
+### Changed
+
+- Timers are now based on real time signal rather than file descriptors so the number of timers is now unlimited
+
 ## 1.2.6 - 2021-09-24
 
 ### Fixed
