@@ -23,13 +23,15 @@
 #ifndef HLK_TIMER_H
 #define HLK_TIMER_H
 
-#include <poll.h>
+#include <signal.h>
 #include <hlk/events/event.h>
 
 namespace Hlk {
 
 class Timer {
 public:
+    friend void handler(int, siginfo_t *, void *);
+
     /**************************************************************************
      * Constructors / Destructors
      *************************************************************************/
@@ -59,44 +61,56 @@ public:
 
     bool started() const;
 
+    std::mutex m_mutex;
+
 protected:
     /**************************************************************************
      * Static methods
      *************************************************************************/
 
-    static void loop();
-    static void writeSafeInterrupt();
+    static int reserveId(Timer *timer);
 
     /**************************************************************************
      * Static members
      *************************************************************************/
 
-    static std::vector<pollfd> m_pfds;
-    static std::vector<Timer *> m_instances;
-    static std::mutex m_pfdsMutex;
-    static std::mutex m_cdtorMutex;
-    static std::mutex m_rwMutex;
-    static std::thread *m_thread;
-    static bool m_running;
+    static std::mutex m_cdtor_mutex;
+    static std::mutex m_reserveMutex;
     static unsigned int m_counter;
-    static unsigned int m_rwBytes;
-    static int m_pipes[2];
+
+    /**************************************************************************
+     * Protected: Methods
+     *************************************************************************/
+
+    /**
+     * @brief Create a timer object
+     * 
+     * Reserves the signal, bind it and return new timer_t
+     * 
+     * @param int 
+     * @return timer_t 
+     */
+    timer_t createTimer(unsigned int);
+
+    void deleteTimer(timer_t, int);
+
+    void setTime(timer_t, unsigned int);
 
     /**************************************************************************
      * Private members
      *************************************************************************/
 
-    int m_timerfd = -1;
-    std::mutex m_mutex;
     bool m_oneShot = false;
-    bool m_updated = false;
+    bool m_started = false;
+    int m_id = -1;
+    timer_t m_timerid = timer_t();
 };
 
 /******************************************************************************
  * Inline
  *****************************************************************************/
 
-inline bool Timer::started() const { return m_timerfd > -1 ? true : false; }
+inline bool Timer::started() const { return m_started; }
 
 } // namespace Hlk
 

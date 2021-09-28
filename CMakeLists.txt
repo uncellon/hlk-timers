@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pthread")
 
 find_package(HlkEvents REQUIRED)
+find_package(HlkPool REQUIRED)
 
 file(GLOB HEADERS include/hlk/timers/*.h)
 file(GLOB SOURCES include/hlk/timers/*.cpp)
@@ -16,7 +17,7 @@ file(GLOB SOURCES include/hlk/timers/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 add_library(Hlk::Timers ALIAS ${PROJECT_NAME})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC Hlk::Events)
+target_link_libraries(${PROJECT_NAME} PUBLIC Hlk::Events Hlk::Pool rt)
 
 set_target_properties(
     ${PROJECT_NAME} PROPERTIES
