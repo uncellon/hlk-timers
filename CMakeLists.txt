@@ -26,7 +26,7 @@ set_target_properties(
 )
 
 target_include_directories(
-    ${PROJECT_NAME} INTERFACE
+    ${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include/hlk/timers>
 )
@@ -36,36 +36,43 @@ install(
     EXPORT ${PROJECT_NAME}Targets
     PUBLIC_HEADER
         DESTINATION "include/hlk/timers"
+    LIBRARY
+        DESTINATION "lib"
 )
 
 install(
     EXPORT ${PROJECT_NAME}Targets
     NAMESPACE Hlk::
-    FILE "${PROJECT_NAME}Config.cmake"
+    FILE "${PROJECT_NAME}Targets.cmake"
     DESTINATION "lib/cmake/${PROJECT_NAME}"
 )
 
-# Generate local "${PROJECT_NAME}Config.cmake"
+# Generate local "${PROJECT_NAME}Targets.cmake"
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake)
 export(
     EXPORT ${PROJECT_NAME}Targets
-    FILE ${PROJECT_NAME}Config.cmake
+    FILE ${PROJECT_NAME}Targets.cmake
 )
-# Since the export(...) is performed after find_package(...), create an empty file to avoid find_package(...) errors
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake)
 
-# Generate config for version supporting
 include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_LIST_DIR}/config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+    INSTALL_DESTINATION "lib/cmake/${PROJECT_NAME}"
+)
+
 write_basic_package_version_file(
     ${PROJECT_NAME}ConfigVersion.cmake
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
 
-# Install config for version supporting
 install(
     FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
         ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
-    DESTINATION lib/cmake/${PROJECT_NAME}
+    DESTINATION "lib/cmake/${PROJECT_NAME}"
 )
 
 if(BUILD_EXAMPLES)
@@ -73,8 +80,8 @@ if(BUILD_EXAMPLES)
 endif()
 
 if(BUILD_TESTS)
-    add_subdirectory(tests)
     enable_testing()
+    add_subdirectory(tests)
     add_test(NAME CascadeTimerCall COMMAND CascadeTimerCallTest)
     add_test(NAME CallingFromAnotherThread COMMAND CallingFromAnotherThreadTest)
     add_test(NAME RecallOneShotTimer COMMAND RecallOneShotTimerTest)

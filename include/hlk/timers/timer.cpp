@@ -60,6 +60,8 @@ void timerHandler(int sig, siginfo_t *si, void *uc) {
 Timer::Timer() {
     m_cdtorMutex.lock();
     if (++m_counter == 1) {
+        timerInstances.clear();
+
         // Register signal
         struct sigaction sa;
         sa.sa_flags = SA_SIGINFO;
@@ -76,6 +78,7 @@ Timer::Timer() {
 Timer::~Timer() {
     m_cdtorMutex.lock();
     if (!--m_counter) {
+        timerInstances.clear();
         signal(TIMER_SIGNAL, SIG_DFL);
     }
     m_cdtorMutex.unlock();
