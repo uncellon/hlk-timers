@@ -71,6 +71,16 @@ Timer::Timer() {
             throw std::runtime_error("sigaction(...) failed, errno: " 
                 + std::to_string(errno));
         }
+        
+        sigset_t set;
+        sigisemptyset(&set);
+        sigaddset(&set, TIMER_SIGNAL);
+
+        // Block signal for process
+        sigprocmask(SIG_BLOCK, &set, nullptr);
+
+        // Unblock for this thread
+        pthread_sigmask(SIG_UNBLOCK, &set, nullptr);
     }
     m_cdtorMutex.unlock();
 }
