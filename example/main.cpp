@@ -17,8 +17,5 @@ int main(int argc, char *argv[]) {
     tmr2.start(2000);
     tmr3.start(4000);
 
-    unsigned int sleeped = 20;
-    do {
-        sleeped = sleep(sleeped);
-    } while (sleeped != 0);
+    sleep(20);
 }

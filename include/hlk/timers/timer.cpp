@@ -23,6 +23,8 @@
 #include "timer.h"
 
 #include <vector>
+#include <unistd.h>
+#include <signal.h>
 #include <hlk/pool/pool.h>
 
 #define TIMER_SIGNAL SIGRTMIN
@@ -36,62 +38,46 @@ namespace Hlk {
 std::mutex Timer::m_cdtorMutex;
 std::mutex Timer::m_reserveMutex;
 unsigned int Timer::m_counter = 0;
+std::thread *Timer::m_dispatcherThread = nullptr;
+bool Timer::m_dispatcherRunning = false;
+std::vector<Timer *> Timer::m_timerInstances;
 
 /******************************************************************************
  * Constructors / Destructors
  *****************************************************************************/
 
-std::vector<Timer *> timerInstances;
-
-void timerHandler(int sig, siginfo_t *si, void *uc) {
-    auto index = si->_sifields._timer.si_sigval.sival_int;
-    auto timerInstance = timerInstances[index];
-    timerInstance->m_mutex.lock();
-    if (timerInstance->oneShot()) {
-        timerInstance->m_started = false;
-        timerInstance->deleteTimer(timerInstance->m_timerid, index);
-    }
-    Pool::getInstance()->pushTask([timerInstance] () {
-        timerInstance->onTimeout();
-    });
-    timerInstance->m_mutex.unlock();
-}
-
 Timer::Timer() {
-    m_cdtorMutex.lock();
-    if (++m_counter == 1) {
-        timerInstances.clear();
+    std::unique_lock lock(m_cdtorMutex);
 
-        // Register signal
-        struct sigaction sa;
-        sa.sa_flags = SA_SIGINFO;
-        sa.sa_sigaction = timerHandler;
-        sigemptyset(&sa.sa_mask);
-        if (sigaction(TIMER_SIGNAL, &sa, nullptr) == -1) {
-            throw std::runtime_error("sigaction(...) failed, errno: " 
-                + std::to_string(errno));
-        }
-        
-        sigset_t set;
-        sigisemptyset(&set);
-        sigaddset(&set, TIMER_SIGNAL);
-
-        // Block signal for process
-        sigprocmask(SIG_BLOCK, &set, nullptr);
-
-        // Unblock for this thread
-        pthread_sigmask(SIG_UNBLOCK, &set, nullptr);
+    if (++m_counter != 1) {
+        return;
     }
-    m_cdtorMutex.unlock();
+
+    m_timerInstances.clear();
+    
+    sigset_t sigset;
+    sigisemptyset(&sigset);
+    sigaddset(&sigset, TIMER_SIGNAL);
+    sigprocmask(SIG_BLOCK, &sigset, nullptr);
+
+    m_dispatcherRunning = true;
+    m_dispatcherThread = new std::thread(&Timer::dispatcherLoop);
 }
 
 Timer::~Timer() {
-    m_cdtorMutex.lock();
-    if (!--m_counter) {
-        timerInstances.clear();
-        signal(TIMER_SIGNAL, SIG_DFL);
+    std::unique_lock lock(m_cdtorMutex);
+    
+    if (--m_counter != 0) {
+        return;
     }
-    m_cdtorMutex.unlock();
+
+    m_dispatcherRunning = false;
+    sigqueue(getpid(), TIMER_SIGNAL, sigval());
+    m_dispatcherThread->join();
+    delete m_dispatcherThread;
+    m_dispatcherThread = nullptr;
+
+    m_timerInstances.clear();
 }
 
 /******************************************************************************
@@ -139,16 +125,49 @@ void Timer::setOneShot(bool value) {
 int Timer::reserveId(Timer *timer) {
     std::unique_lock lock(m_reserveMutex);
 
-    for (size_t i = 0; i < timerInstances.size(); ++i) {
-        if (timerInstances[i] != nullptr) {
+    for (size_t i = 0; i < m_timerInstances.size(); ++i) {
+        if (m_timerInstances[i] != nullptr) {
             continue;
         }
-        timerInstances[i] = timer;
+        m_timerInstances[i] = timer;
         return i;
     }
 
-    timerInstances.push_back(timer);
-    return timerInstances.size() - 1;
+    m_timerInstances.push_back(timer);
+    return m_timerInstances.size() - 1;
+}
+
+void Timer::dispatcherLoop() {
+    sigset_t sigset;
+    sigisemptyset(&sigset);
+    sigaddset(&sigset, TIMER_SIGNAL);
+
+    siginfo_t siginfo;
+
+    while (m_dispatcherRunning) {
+        if (sigwaitinfo(&sigset, &siginfo) == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return;
+        }
+        
+        if (siginfo.si_code != SI_TIMER) {
+            return;
+        }
+
+        auto index = siginfo._sifields._timer.si_sigval.sival_int;
+        auto timerInstance = m_timerInstances[index];
+        timerInstance->m_mutex.lock();
+        if (timerInstance->oneShot()) {
+            timerInstance->m_started = false;
+            timerInstance->deleteTimer(timerInstance->m_timerid, index);
+        }
+        Pool::getInstance()->pushTask([timerInstance] () {
+            timerInstance->onTimeout();
+        });
+        timerInstance->m_mutex.unlock();
+    }
 }
 
 /******************************************************************************
@@ -167,6 +186,7 @@ timer_t Timer::createTimer(unsigned int msec) {
     sev.sigev_signo = TIMER_SIGNAL;
     sev.sigev_value.sival_ptr = &timerid;
     sev.sigev_value.sival_int = m_id;
+    sev._sigev_un._sigev_thread._attribute = nullptr;
 
     if (timer_create(CLOCK_MONOTONIC, &sev, &timerid) == -1) {
         throw std::runtime_error("timer_create(...) failed, errno: "
@@ -178,7 +198,7 @@ timer_t Timer::createTimer(unsigned int msec) {
 
 void Timer::deleteTimer(timer_t timerid, int id) {
     timer_delete(timerid);
-    timerInstances[id] = nullptr;
+    m_timerInstances[id] = nullptr;
 }
 
 void Timer::setTime(timer_t timerid, unsigned int msec) {

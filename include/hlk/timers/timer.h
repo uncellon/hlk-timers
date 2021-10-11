@@ -23,15 +23,12 @@
 #ifndef HLK_TIMER_H
 #define HLK_TIMER_H
 
-#include <signal.h>
 #include <hlk/events/event.h>
 
 namespace Hlk {
 
 class Timer {
 public:
-    friend void timerHandler(int, siginfo_t *, void *);
-
     /**************************************************************************
      * Constructors / Destructors
      *************************************************************************/
@@ -67,6 +64,7 @@ protected:
      *************************************************************************/
 
     static int reserveId(Timer *timer);
+    static void dispatcherLoop();
 
     /**************************************************************************
      * Static: Members
@@ -75,6 +73,9 @@ protected:
     static std::mutex m_cdtorMutex;
     static std::mutex m_reserveMutex;
     static unsigned int m_counter;
+    static std::thread *m_dispatcherThread;
+    static bool m_dispatcherRunning;
+    static std::vector<Timer *> m_timerInstances;
 
     /**************************************************************************
      * Protected: Methods
@@ -83,6 +84,7 @@ protected:
     timer_t createTimer(unsigned int msec);
     void deleteTimer(timer_t timerid, int id);
     void setTime(timer_t timerid, unsigned int msec);
+
     /**************************************************************************
      * Protected: Members
      *************************************************************************/

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 2.1.0 - 2021-10-11
+
+### Added
+
+- Dispatcher thread: now the signal wakes up the dispatcher thread instead of creating the job
+
+### Fixed
+
+- Signal handler used non signal-safety functions
+
 ## 2.0.1 - 2021-10-09
 
 ### Fixed
