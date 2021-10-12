@@ -23,6 +23,7 @@
 #ifndef HLK_TIMER_H
 #define HLK_TIMER_H
 
+#include <thread>
 #include <hlk/events/event.h>
 
 namespace Hlk {

@@ -1,5 +1,6 @@
 #include "hlk/timers/timer.h"
 
+#include <iostream>
 #include <condition_variable>
 
 std::condition_variable cv;
