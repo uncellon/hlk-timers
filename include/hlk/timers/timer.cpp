@@ -25,9 +25,10 @@
 #include <vector>
 #include <unistd.h>
 #include <signal.h>
+#include <ucontext.h>
 #include <hlk/pool/pool.h>
 
-#define TIMER_SIGNAL SIGRTMIN
+#define TIMER_SIGNAL SIGALRM
 
 namespace Hlk {
 
@@ -46,6 +47,11 @@ std::vector<Timer *> Timer::m_timerInstances;
  * Constructors / Destructors
  *****************************************************************************/
 
+static void timerSignalHandler(int sig, siginfo_t *info, void *ucontext) {
+    sigaddset(&static_cast<ucontext_t *>(ucontext)->uc_sigmask, TIMER_SIGNAL);
+    kill(getpid(), TIMER_SIGNAL);
+}
+
 Timer::Timer() {
     std::unique_lock lock(m_cdtorMutex);
 
@@ -56,9 +62,15 @@ Timer::Timer() {
     m_timerInstances.clear();
     
     sigset_t sigset;
-    sigisemptyset(&sigset);
+    sigemptyset(&sigset);
     sigaddset(&sigset, TIMER_SIGNAL);
     sigprocmask(SIG_BLOCK, &sigset, nullptr);
+
+    struct sigaction sa;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sa.sa_sigaction = timerSignalHandler;
+    sigaction(TIMER_SIGNAL, &sa, nullptr);
+    kill(getpid(), TIMER_SIGNAL);
 
     m_dispatcherRunning = true;
     m_dispatcherThread = new std::thread(&Timer::dispatcherLoop);
@@ -139,7 +151,7 @@ int Timer::reserveId(Timer *timer) {
 
 void Timer::dispatcherLoop() {
     sigset_t sigset;
-    sigisemptyset(&sigset);
+    sigemptyset(&sigset);
     sigaddset(&sigset, TIMER_SIGNAL);
 
     siginfo_t siginfo;
@@ -152,8 +164,11 @@ void Timer::dispatcherLoop() {
             return;
         }
         
-        if (siginfo.si_code != SI_TIMER) {
+        if (siginfo.si_code == SI_QUEUE) {
             return;
+        }
+        if (siginfo.si_code != SI_TIMER) {
+            continue;
         }
 
         auto index = siginfo._sifields._timer.si_sigval.sival_int;
