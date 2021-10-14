@@ -1,5 +1,9 @@
 # Homebrew Libraries Kit - Timers
 
+## Known issues
+
+- Some tests may fail due to accidental awakening of *condition_variable*
+
 ## License
 
 <img align="right" src="https://www.gnu.org/graphics/lgplv3-with-text-154x68.png">

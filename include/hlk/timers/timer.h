@@ -82,9 +82,9 @@ protected:
      * Protected: Methods
      *************************************************************************/
 
-    timer_t createTimer(unsigned int msec);
-    void deleteTimer(timer_t timerid, int id);
-    void setTime(timer_t timerid, unsigned int msec);
+    void createTimer(unsigned int msec);
+    void deleteTimer();
+    void setTime(unsigned int msec);
 
     /**************************************************************************
      * Protected: Members
@@ -92,16 +92,19 @@ protected:
 
     bool m_oneShot = false;
     bool m_started = false;
-    int m_id = -1;
+    int m_index = -1;
     timer_t m_timerid = timer_t();
     std::mutex m_mutex;
 };
 
 /******************************************************************************
- * Inline
+ * Inline definition: Accessors / Mutators
  *****************************************************************************/
 
 inline bool Timer::started() const { return m_started; }
+
+inline bool Timer::oneShot() const { return m_oneShot; }
+void Timer::setOneShot(bool value) { m_oneShot = value; }
 
 } // namespace Hlk
 

@@ -100,41 +100,29 @@ void Timer::start(unsigned int msec) {
     std::unique_lock lock(m_mutex);
     if (!m_started) {
         m_started = true;
-        m_timerid = createTimer(msec);
+        createTimer(msec);
     }
-    setTime(m_timerid, msec);
+    setTime(msec);
 }
 
 void Timer::stop() {
     std::unique_lock lock(m_mutex);
 
-    if (m_id == -1) {
+    if (!m_started) {
         return;
     }
 
     m_started = false;
-    deleteTimer(m_timerid, m_id);
+    deleteTimer();
     m_timerid = timer_t();
-    m_id = -1;
-}
-
-/******************************************************************************
- * Accessors / Mutators
- *****************************************************************************/
-
-bool Timer::oneShot() const {
-    return m_oneShot;
-}
-
-void Timer::setOneShot(bool value) {
-    m_oneShot = value;
+    m_index = -1;
 }
 
 /******************************************************************************
  * Static: Methods
  *****************************************************************************/
 
-int Timer::reserveId(Timer *timer) {
+inline int Timer::reserveId(Timer *timer) {
     std::unique_lock lock(m_reserveMutex);
 
     for (size_t i = 0; i < m_timerInstances.size(); ++i) {
@@ -178,7 +166,7 @@ void Timer::dispatcherLoop() {
         }
         if (timerInstance->oneShot()) {
             timerInstance->m_started = false;
-            timerInstance->deleteTimer(timerInstance->m_timerid, index);
+            timerInstance->deleteTimer();
         }
         poolInstance->pushTask([timerInstance] () {
             timerInstance->onTimeout();
@@ -190,34 +178,30 @@ void Timer::dispatcherLoop() {
  * Protected: Methods
  *****************************************************************************/
 
-timer_t Timer::createTimer(unsigned int msec) {
-    timer_t timerid = timer_t();
-
+inline void Timer::createTimer(unsigned int msec) {
     // Reserve signal for this object
-    m_id = reserveId(this);
+    m_index = reserveId(this);
 
     // Create sigevent for timer
     struct sigevent sev;
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = TIMER_SIGNAL;
-    sev.sigev_value.sival_ptr = &timerid;
-    sev.sigev_value.sival_int = m_id;
+    sev.sigev_value.sival_ptr = &m_timerid;
+    sev.sigev_value.sival_int = m_index;
     sev._sigev_un._sigev_thread._attribute = nullptr;
 
-    if (timer_create(CLOCK_MONOTONIC, &sev, &timerid) == -1) {
+    if (timer_create(CLOCK_MONOTONIC, &sev, &m_timerid) == -1) {
         throw std::runtime_error("timer_create(...) failed, errno: "
             + std::to_string(errno));
     }
-
-    return timerid;
 }
 
-void Timer::deleteTimer(timer_t timerid, int id) {
-    timer_delete(timerid);
-    m_timerInstances[id] = nullptr;
+inline void Timer::deleteTimer() {
+    timer_delete(m_timerid);
+    m_timerInstances[m_index] = nullptr;
 }
 
-void Timer::setTime(timer_t timerid, unsigned int msec) {
+inline void Timer::setTime(unsigned int msec) {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -233,7 +217,7 @@ void Timer::setTime(timer_t timerid, unsigned int msec) {
         its.it_interval.tv_nsec = (msec % 1000) * 1000000;
     }
 
-    if (timer_settime(timerid, TIMER_ABSTIME, &its, nullptr) == -1) {
+    if (timer_settime(m_timerid, TIMER_ABSTIME, &its, nullptr) == -1) {
         throw std::runtime_error("timerfd_settime(...) failed, errno: " 
             + std::to_string(errno));
     }
