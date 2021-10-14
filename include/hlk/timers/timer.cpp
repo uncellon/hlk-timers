@@ -28,7 +28,7 @@
 #include <ucontext.h>
 #include <hlk/pool/pool.h>
 
-#define TIMER_SIGNAL SIGALRM
+#define TIMER_SIGNAL SIGRTMIN
 
 namespace Hlk {
 
