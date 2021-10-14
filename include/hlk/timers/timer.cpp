@@ -150,6 +150,10 @@ int Timer::reserveId(Timer *timer) {
 }
 
 void Timer::dispatcherLoop() {
+    Hlk::Pool *poolInstance =Pool::getInstance();
+    Hlk::Timer *timerInstance= nullptr;
+    int index = 0;
+
     sigset_t sigset;
     sigemptyset(&sigset);
     sigaddset(&sigset, TIMER_SIGNAL);
@@ -157,31 +161,28 @@ void Timer::dispatcherLoop() {
     siginfo_t siginfo;
 
     while (m_dispatcherRunning) {
-        if (sigwaitinfo(&sigset, &siginfo) == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return;
-        }
+        sigwaitinfo(&sigset, &siginfo);
         
-        if (siginfo.si_code == SI_QUEUE) {
-            return;
-        }
         if (siginfo.si_code != SI_TIMER) {
             continue;
         }
 
-        auto index = siginfo._sifields._timer.si_sigval.sival_int;
-        auto timerInstance = m_timerInstances[index];
-        timerInstance->m_mutex.lock();
+        index = siginfo._sifields._timer.si_sigval.sival_int;
+        timerInstance = m_timerInstances[index];
+        if (!timerInstance) {
+            continue;
+        }
+        std::unique_lock lock(timerInstance->m_mutex);
+        if (!timerInstance->m_started) {
+            continue;
+        }
         if (timerInstance->oneShot()) {
             timerInstance->m_started = false;
             timerInstance->deleteTimer(timerInstance->m_timerid, index);
         }
-        Pool::getInstance()->pushTask([timerInstance] () {
+        poolInstance->pushTask([timerInstance] () {
             timerInstance->onTimeout();
         });
-        timerInstance->m_mutex.unlock();
     }
 }
 

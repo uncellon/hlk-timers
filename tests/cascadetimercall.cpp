@@ -1,42 +1,34 @@
 #include "hlk/timers/timer.h"
 
+#include <fcntl.h>
 #include <iostream>
+#include <unistd.h>
+#include <signal.h>
+#include <execinfo.h>
 #include <condition_variable>
 
 std::condition_variable cv;
-Hlk::Timer timer1, timer2, timer3, timer4, timer5;
 bool called = false;
-
-void timerHandler1() {
-    std::cout << "Timer handler 1 called\n";
-    timer2.start(1);
-}
-
-void timerHandler2() {
-    std::cout << "Timer handler 2 called\n";
-    timer3.start(1);
-}
-
-void timerHandler3() {
-    std::cout << "Timer handler 3 called\n";
-    timer4.start(1);
-}
-
-void timerHandler4() {
-    std::cout << "Timer handler 4 called\n";
-    timer5.start(1);
-}
-
-void timerHandler5() {
-    std::cout << "Timer handler 5 called\n";
-    called = true;
-    cv.notify_one();
-}
 
 Hlk::Timer timers[10000];
 int currentTimer = 0;
 
+void sigsegvHandler(int signum) {
+    int nptrs, fd;
+    void *buffer[1024];
+
+    nptrs = backtrace(buffer, 1024);
+    fd = open("cascadetimercall_backtrace.txt", O_CREAT | O_WRONLY | O_TRUNC, 0665);
+    backtrace_symbols_fd(buffer, nptrs, fd);
+    close(fd);
+
+    signal(signum, SIG_DFL);
+    exit(3);
+}
+
 int main(int argc, char* argv[]) {
+    signal(SIGSEGV, sigsegvHandler);
+
     for (size_t i = 0; i < 9999; ++i) {
         timers[i].setOneShot(true);
         timers[i].onTimeout.addEventHandler([] () {
