@@ -103,7 +103,7 @@ protected:
 inline bool Timer::started() const { return m_started; }
 
 inline bool Timer::oneShot() const { return m_oneShot; }
-void Timer::setOneShot(bool value) { m_oneShot = value; }
+inline void Timer::setOneShot(bool value) { m_oneShot = value; }
 
 } // namespace Hlk
 
