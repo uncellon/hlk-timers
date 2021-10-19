@@ -8,6 +8,9 @@
 #include <condition_variable>
 
 bool threadsRunning = true;
+unsigned int triggerCount = 0;
+unsigned int startCount = 0;
+unsigned int stopCount = 0;
 
 void sigsegvHandler(int signum) {
     int nptrs, fd;
@@ -23,7 +26,7 @@ void sigsegvHandler(int signum) {
 }
 
 void timerTimeoutHandler() {
-    std::cout << "Timer triggered\n";
+    ++triggerCount;
 }
 
 int main(int argc, char *argv[]) {
@@ -35,12 +38,28 @@ int main(int argc, char *argv[]) {
     std::thread thread1([&timer] () {
         while (threadsRunning) {
             timer.stop();
+            ++stopCount;
         }
     });
 
     std::thread thread2([&timer] () {
         while (threadsRunning) {
-            timer.start(1000);
+            timer.start(1);
+            ++startCount;
+        }
+    });
+
+    std::thread thread3([&timer] () {
+        while (threadsRunning) {
+            timer.stop();
+            ++stopCount;
+        }
+    });
+
+    std::thread thread4([&timer] () {
+        while (threadsRunning) {
+            timer.start(0);
+            ++startCount;
         }
     });
 
@@ -49,6 +68,13 @@ int main(int argc, char *argv[]) {
     threadsRunning = false;
     thread1.join();
     thread2.join();
+    thread3.join();
+    thread4.join();
+
+    std::cout << "Test passed!\n";
+    std::cout << "The timer triggered: " << triggerCount << " times\n";
+    std::cout << "The timer has been started: " << startCount << " times\n";
+    std::cout << "The timer has been stopped: " << stopCount << " times\n";
 
     return 0;
 }

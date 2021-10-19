@@ -37,7 +37,7 @@ namespace Hlk {
  *****************************************************************************/
 
 std::mutex Timer::m_cdtorMutex;
-std::mutex Timer::m_reserveMutex;
+std::mutex Timer::m_timerMutex;
 unsigned int Timer::m_counter = 0;
 std::thread *Timer::m_dispatcherThread = nullptr;
 bool Timer::m_dispatcherRunning = false;
@@ -77,8 +77,10 @@ Timer::Timer() {
 }
 
 Timer::~Timer() {
+    stop();
+
     std::unique_lock lock(m_cdtorMutex);
-    
+
     if (--m_counter != 0) {
         return;
     }
@@ -97,7 +99,7 @@ Timer::~Timer() {
  *****************************************************************************/
 
 void Timer::start(unsigned int msec) {
-    std::unique_lock lock(m_mutex);
+    std::unique_lock lock(m_timerMutex);
     if (!m_started) {
         m_started = true;
         createTimer(msec);
@@ -106,7 +108,7 @@ void Timer::start(unsigned int msec) {
 }
 
 void Timer::stop() {
-    std::unique_lock lock(m_mutex);
+    std::unique_lock lock(m_timerMutex);
 
     if (!m_started) {
         return;
@@ -123,8 +125,6 @@ void Timer::stop() {
  *****************************************************************************/
 
 inline int Timer::reserveId(Timer *timer) {
-    std::unique_lock lock(m_reserveMutex);
-
     for (size_t i = 0; i < m_timerInstances.size(); ++i) {
         if (m_timerInstances[i] != nullptr) {
             continue;
@@ -155,22 +155,20 @@ void Timer::dispatcherLoop() {
             continue;
         }
 
+        std::unique_lock lock(m_timerMutex);
+
         index = siginfo._sifields._timer.si_sigval.sival_int;
         timerInstance = m_timerInstances[index];
-        if (!timerInstance) {
+        if (!timerInstance || !timerInstance->m_started) {
             continue;
-        }
-        std::unique_lock lock(timerInstance->m_mutex);
-        if (!timerInstance->m_started) {
-            continue;
-        }
-        if (timerInstance->oneShot()) {
-            timerInstance->m_started = false;
-            timerInstance->deleteTimer();
         }
         poolInstance->pushTask([timerInstance] () {
             timerInstance->onTimeout();
         });
+        if (timerInstance->oneShot()) {
+            timerInstance->m_started = false;
+            timerInstance->deleteTimer();
+        }
     }
 }
 

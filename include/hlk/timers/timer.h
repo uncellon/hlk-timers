@@ -72,7 +72,7 @@ protected:
      *************************************************************************/
 
     static std::mutex m_cdtorMutex;
-    static std::mutex m_reserveMutex;
+    static std::mutex m_timerMutex;
     static unsigned int m_counter;
     static std::thread *m_dispatcherThread;
     static bool m_dispatcherRunning;
@@ -94,7 +94,6 @@ protected:
     bool m_started = false;
     int m_index = -1;
     timer_t m_timerid = timer_t();
-    std::mutex m_mutex;
 };
 
 /******************************************************************************
